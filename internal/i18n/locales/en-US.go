@@ -159,6 +159,8 @@ var MessagesEnUS = map[string]string{
 	"config.max_retries_desc":                "Maximum number of retries for a single request using different keys, 0 for no retries.",
 	"config.blacklist_threshold":             "Blacklist Threshold",
 	"config.blacklist_threshold_desc":        "Number of consecutive failures before a key is blacklisted, 0 to disable blacklisting.",
+	"config.keys_sort_max_count":             "Key Sorting Threshold",
+	"config.keys_sort_max_count_desc":        "Maximum number of keys to enable sorting and display by last used time. If group total keys exceeds this value, sorting falls back to ID order for performance.",
 	"config.key_validation_interval":         "Key Validation Interval (minutes)",
 	"config.key_validation_interval_desc":    "Default interval (minutes) for background key validation.",
 	"config.key_validation_concurrency":      "Key Validation Concurrency",

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	app_errors "gpt-load/internal/errors"
 	"gpt-load/internal/models"
@@ -197,7 +198,8 @@ func (s *Server) ListKeysInGroup(c *gin.Context) {
 		return
 	}
 
-	if _, ok := s.findGroupByID(c, groupID); !ok {
+	group, ok := s.findGroupByID(c, groupID)
+	if !ok {
 		return
 	}
 
@@ -213,7 +215,28 @@ func (s *Server) ListKeysInGroup(c *gin.Context) {
 		searchHash = s.EncryptionSvc.Hash(searchKeyword)
 	}
 
-	query := s.KeyService.ListKeysInGroupQuery(groupID, statusFilter, searchHash)
+	effectiveConfig := s.SettingsManager.GetEffectiveConfig(group.Config)
+	threshold := effectiveConfig.KeysSortMaxCount
+
+	// Avoid full COUNT(*) on huge groups: probe the (threshold+1)th row.
+	// If it exists, total keys > threshold and we disable last-used sorting/display.
+	var probe struct{ ID uint }
+	probeErr := s.DB.Model(&models.APIKey{}).
+		Select("id").
+		Where("group_id = ?", groupID).
+		Offset(threshold).
+		Limit(1).
+		Take(&probe).Error
+
+	lastUsedEnabled := true
+	if probeErr == nil {
+		lastUsedEnabled = false
+	} else if !errors.Is(probeErr, gorm.ErrRecordNotFound) {
+		response.Error(c, app_errors.ParseDBError(probeErr))
+		return
+	}
+
+	query := s.KeyService.ListKeysInGroupQuery(groupID, statusFilter, searchHash, lastUsedEnabled)
 
 	var keys []models.APIKey
 	paginatedResult, err := response.Paginate(c, query, &keys)
@@ -233,6 +256,9 @@ func (s *Server) ListKeysInGroup(c *gin.Context) {
 		}
 	}
 	paginatedResult.Items = keys
+	paginatedResult.Meta = map[string]any{
+		"last_used_enabled": lastUsedEnabled,
+	}
 
 	response.Success(c, paginatedResult)
 }

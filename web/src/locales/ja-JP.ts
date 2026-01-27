@@ -529,6 +529,7 @@ export default {
     connectTimeout: "接続タイムアウト",
     maxRetries: "最大リトライ回数",
     blacklistThreshold: "ブラックリスト閾値",
+    keysSortMaxCount: "キーソートしきい値",
     keyValidationInterval: "キー検証間隔",
     logRetentionDays: "ログ保存日数",
     enableRequestLogging: "リクエストログ有効化",

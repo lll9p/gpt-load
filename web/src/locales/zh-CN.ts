@@ -512,6 +512,7 @@ export default {
     connectTimeout: "连接超时",
     maxRetries: "最大重试次数",
     blacklistThreshold: "黑名单阈值",
+    keysSortMaxCount: "密钥排序阈值",
     keyValidationInterval: "密钥验证间隔",
     logRetentionDays: "日志保留天数",
     enableRequestLogging: "启用请求日志",

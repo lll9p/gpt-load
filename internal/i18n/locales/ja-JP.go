@@ -159,6 +159,8 @@ var MessagesJaJP = map[string]string{
 	"config.max_retries_desc":                "異なるキーを使用した単一リクエストの最大リトライ数、0でリトライなし。",
 	"config.blacklist_threshold":             "ブラックリストしきい値",
 	"config.blacklist_threshold_desc":        "キーがブラックリストに入るまでの連続失敗回数、0でブラックリスト無効。",
+	"config.keys_sort_max_count":             "キーソートしきい値",
+	"config.keys_sort_max_count_desc":        "最終使用時刻でのソート/表示を有効にする最大キー数。グループ内のキー総数がこの値を超えると、パフォーマンスのためID順にフォールバックします。",
 	"config.key_validation_interval":         "キー検証間隔（分）",
 	"config.key_validation_interval_desc":    "バックグラウンドキー検証のデフォルト間隔（分）。",
 	"config.key_validation_concurrency":      "キー検証並行数",

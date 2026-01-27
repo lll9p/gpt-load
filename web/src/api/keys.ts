@@ -5,6 +5,7 @@ import type {
   GroupConfigOption,
   GroupStatsResponse,
   KeyStatus,
+  Pagination,
   ParentAggregateGroup,
   TaskInfo,
 } from "@/types/models";
@@ -76,9 +77,9 @@ export const keysApi = {
     status?: KeyStatus;
   }): Promise<{
     items: APIKey[];
-    pagination: {
-      total_items: number;
-      total_pages: number;
+    pagination: Pagination;
+    meta?: {
+      last_used_enabled?: boolean;
     };
   }> {
     const res = await http.get("/keys", { params });

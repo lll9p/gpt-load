@@ -208,9 +208,13 @@ func (s *RequestLogService) writeLogsToDB(logs []*models.RequestLog) error {
 		}
 
 		keyStats := make(map[string]int64)
+		lastUsedAtByKeyHash := make(map[string]time.Time)
 		for _, log := range logs {
 			if log.IsSuccess && log.KeyHash != "" {
 				keyStats[log.KeyHash]++
+				if prev, ok := lastUsedAtByKeyHash[log.KeyHash]; !ok || prev.Before(log.Timestamp) {
+					lastUsedAtByKeyHash[log.KeyHash] = log.Timestamp
+				}
 			}
 		}
 
@@ -224,9 +228,21 @@ func (s *RequestLogService) writeLogsToDB(logs []*models.RequestLog) error {
 			}
 			caseStmt.WriteString("END")
 
+			// Prevent last_used_at from moving backwards due to unordered flush batches.
+			var lastUsedCase strings.Builder
+			var lastUsedArgs []any
+			lastUsedCase.WriteString("CASE key_hash ")
+			for _, keyHash := range keyHashes {
+				ts := lastUsedAtByKeyHash[keyHash]
+				lastUsedCase.WriteString("WHEN ? THEN (CASE WHEN last_used_at IS NULL OR last_used_at < ? THEN ? ELSE last_used_at END) ")
+				lastUsedArgs = append(lastUsedArgs, keyHash, ts, ts)
+			}
+			lastUsedCase.WriteString("ELSE last_used_at END")
+
 			if err := tx.Model(&models.APIKey{}).Where("key_hash IN ?", keyHashes).
 				Updates(map[string]any{
 					"request_count": gorm.Expr(caseStmt.String()),
+					"last_used_at":  gorm.Expr(lastUsedCase.String(), lastUsedArgs...),
 				}).Error; err != nil {
 				return fmt.Errorf("failed to batch update api_key stats: %w", err)
 			}

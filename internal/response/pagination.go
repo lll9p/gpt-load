@@ -25,6 +25,7 @@ type Pagination struct {
 type PaginatedResponse struct {
 	Items      any        `json:"items"`
 	Pagination Pagination `json:"pagination"`
+	Meta       any        `json:"meta,omitempty"`
 }
 
 // Paginate performs pagination on a GORM query and returns a standardized response.

@@ -528,6 +528,7 @@ export default {
     connectTimeout: "Connect Timeout",
     maxRetries: "Max Retries",
     blacklistThreshold: "Blacklist Threshold",
+    keysSortMaxCount: "Key Sorting Threshold",
     keyValidationInterval: "Key Validation Interval",
     logRetentionDays: "Log Retention Days",
     enableRequestLogging: "Enable Request Logging",

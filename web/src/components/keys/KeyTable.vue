@@ -53,6 +53,7 @@ const currentPage = ref(1);
 const pageSize = ref(12);
 const total = ref(0);
 const totalPages = ref(0);
+const lastUsedEnabled = ref(true);
 const dialog = useDialog();
 const confirmInput = ref("");
 
@@ -207,6 +208,7 @@ async function loadKeys() {
     keys.value = result.items as KeyRow[];
     total.value = result.pagination.total_items;
     totalPages.value = result.pagination.total_pages;
+    lastUsedEnabled.value = result.meta?.last_used_enabled ?? true;
   } finally {
     loading.value = false;
   }
@@ -751,7 +753,7 @@ function resetPage() {
                   {{ t("keys.failuresShort") }}
                   <strong>{{ key.failure_count }}</strong>
                 </span>
-                <span class="stat-item">
+                <span v-if="lastUsedEnabled" class="stat-item">
                   {{ key.last_used_at ? formatRelativeTime(key.last_used_at) : t("keys.unused") }}
                 </span>
               </div>

@@ -34,6 +34,7 @@ type GroupConfig struct {
 	ProxyURL                     *string `json:"proxy_url,omitempty"`
 	MaxRetries                   *int    `json:"max_retries,omitempty"`
 	BlacklistThreshold           *int    `json:"blacklist_threshold,omitempty"`
+	KeysSortMaxCount             *int    `json:"keys_sort_max_count,omitempty"`
 	KeyValidationIntervalMinutes *int    `json:"key_validation_interval_minutes,omitempty"`
 	KeyValidationConcurrency     *int    `json:"key_validation_concurrency,omitempty"`
 	KeyValidationTimeoutSeconds  *int    `json:"key_validation_timeout_seconds,omitempty"`
@@ -119,6 +120,7 @@ type APIKey struct {
 	Notes        string     `gorm:"type:varchar(255);default:''" json:"notes"`
 	RequestCount int64      `gorm:"not null;default:0" json:"request_count"`
 	FailureCount int64      `gorm:"not null;default:0" json:"failure_count"`
+	LastUsedAt   *time.Time `gorm:"index" json:"last_used_at"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
