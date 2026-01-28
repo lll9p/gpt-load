@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"fmt"
 	app_errors "gpt-load/internal/errors"
 	"gpt-load/internal/models"
