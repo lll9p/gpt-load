@@ -221,20 +221,19 @@ func (s *Server) ListKeysInGroup(c *gin.Context) {
 	// Avoid full COUNT(*) on huge groups: probe the (threshold+1)th row.
 	// If it exists, total keys > threshold and we disable last-used sorting/display.
 	var probe struct{ ID uint }
-	probeErr := s.DB.Model(&models.APIKey{}).
+	probeTx := s.DB.Model(&models.APIKey{}).
 		Select("id").
 		Where("group_id = ?", groupID).
 		Offset(threshold).
 		Limit(1).
-		Take(&probe).Error
-
-	lastUsedEnabled := true
-	if probeErr == nil {
-		lastUsedEnabled = false
-	} else if !errors.Is(probeErr, gorm.ErrRecordNotFound) {
-		response.Error(c, app_errors.ParseDBError(probeErr))
+		Find(&probe)
+	if probeTx.Error != nil {
+		response.Error(c, app_errors.ParseDBError(probeTx.Error))
 		return
 	}
+
+	// use Find+RowsAffected to avoid GORM logging ErrRecordNotFound for this probe.
+	lastUsedEnabled := probeTx.RowsAffected == 0
 
 	query := s.KeyService.ListKeysInGroupQuery(groupID, statusFilter, searchHash, lastUsedEnabled)
 
