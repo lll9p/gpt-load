@@ -2,13 +2,9 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"gpt-load/internal/config"
 	"gpt-load/internal/models"
-	"gpt-load/internal/store"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,192 +13,141 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const (
-	RequestLogCachePrefix    = "request_log:"
-	PendingLogKeysSet        = "pending_log_keys"
-	DefaultLogFlushBatchSize = 200
-)
+const DefaultLogFlushBatchSize = 200
 
-// RequestLogService is responsible for managing request logs.
-type RequestLogService struct {
-	db              *gorm.DB
-	store           store.Store
-	settingsManager *config.SystemSettingsManager
-	stopChan        chan struct{}
-	wg              sync.WaitGroup
-	ticker          *time.Ticker
-}
-
-// NewRequestLogService creates a new RequestLogService instance
-func NewRequestLogService(db *gorm.DB, store store.Store, sm *config.SystemSettingsManager) *RequestLogService {
-	return &RequestLogService{
-		db:              db,
-		store:           store,
-		settingsManager: sm,
-		stopChan:        make(chan struct{}),
-	}
-}
-
-// Start initializes the service and starts the periodic flush routine
-func (s *RequestLogService) Start() {
-	s.wg.Add(1)
+// Start starts periodic log flushing and cleanup.
+func (s *LogService) Start() {
 	go s.runLoop()
 }
 
-func (s *RequestLogService) runLoop() {
-	defer s.wg.Done()
+func (s *LogService) runLoop() {
+	defer close(s.done)
 
-	// Initial flush on start
-	s.flush()
-
-	interval := time.Duration(s.settingsManager.GetSettings().RequestLogWriteIntervalMinutes) * time.Minute
-	if interval <= 0 {
-		interval = time.Minute
+	if err := s.flush(s.runCtx); err != nil {
+		logrus.WithError(err).Error("Failed to flush request logs batch")
 	}
-	s.ticker = time.NewTicker(interval)
-	defer s.ticker.Stop()
+	s.cleanupExpiredLogs(s.runCtx)
+
+	interval := s.flushInterval()
+	flushTicker := time.NewTicker(interval)
+	defer flushTicker.Stop()
+	cleanupTicker := time.NewTicker(2 * time.Hour)
+	defer cleanupTicker.Stop()
 
 	for {
 		select {
-		case <-s.ticker.C:
-			newInterval := time.Duration(s.settingsManager.GetSettings().RequestLogWriteIntervalMinutes) * time.Minute
-			if newInterval <= 0 {
-				newInterval = time.Minute
-			}
-			if newInterval != interval {
-				s.ticker.Reset(newInterval)
-				interval = newInterval
-				logrus.Debugf("Request log write interval updated to: %v", interval)
-			}
-			s.flush()
-		case <-s.stopChan:
+		case <-s.runCtx.Done():
 			return
+		case <-flushTicker.C:
+			if newInterval := s.flushInterval(); newInterval != interval {
+				flushTicker.Reset(newInterval)
+				interval = newInterval
+			}
+			if err := s.flush(s.runCtx); err != nil {
+				logrus.WithError(err).Error("Failed to flush request logs batch")
+			}
+		case <-cleanupTicker.C:
+			s.cleanupExpiredLogs(s.runCtx)
 		}
 	}
 }
 
-// Stop gracefully stops the RequestLogService
-func (s *RequestLogService) Stop(ctx context.Context) {
-	close(s.stopChan)
+func (s *LogService) flushInterval() time.Duration {
+	interval := time.Duration(s.settingsManager.GetSettings().RequestLogWriteIntervalMinutes) * time.Minute
+	if interval == 0 {
+		// Keep draining logs buffered before switching to synchronous writes.
+		return time.Minute
+	}
+	return interval
+}
 
-	done := make(chan struct{})
+// Stop cancels periodic work and flushes pending logs within the shutdown context.
+func (s *LogService) Stop(ctx context.Context) error {
+	s.lifecycleMu.Lock()
+	s.stopping = true
+	s.lifecycleMu.Unlock()
+	s.cancel()
+
+	drained := make(chan struct{})
 	go func() {
-		s.wg.Wait()
-		close(done)
+		s.recordsWG.Wait()
+		<-s.done
+		close(drained)
 	}()
 
 	select {
-	case <-done:
-		s.flush()
-		logrus.Info("RequestLogService stopped gracefully.")
+	case <-drained:
+		if err := s.flush(ctx); err != nil {
+			return fmt.Errorf("failed to flush request logs during shutdown: %w", err)
+		}
+		logrus.Info("LogService stopped")
+		return nil
 	case <-ctx.Done():
-		logrus.Warn("RequestLogService stop timed out.")
+		return fmt.Errorf("waiting for log service shutdown: %w", ctx.Err())
 	}
 }
 
-// Record logs a request to the database and cache
-func (s *RequestLogService) Record(log *models.RequestLog) error {
+// Record writes synchronously or buffers a snapshot of the request log.
+func (s *LogService) Record(log *models.RequestLog) error {
+	s.lifecycleMu.Lock()
+	if s.stopping {
+		s.lifecycleMu.Unlock()
+		return fmt.Errorf("log service is stopping")
+	}
+	s.recordsWG.Add(1)
+	s.lifecycleMu.Unlock()
+	defer s.recordsWG.Done()
+
 	log.ID = uuid.NewString()
 	log.Timestamp = time.Now()
 
 	if s.settingsManager.GetSettings().RequestLogWriteIntervalMinutes == 0 {
-		return s.writeLogsToDB([]*models.RequestLog{log})
+		return s.writeLogsToDB(context.Background(), []*models.RequestLog{log})
 	}
 
-	cacheKey := RequestLogCachePrefix + log.ID
-
-	logBytes, err := json.Marshal(log)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request log: %w", err)
-	}
-
-	ttl := time.Duration(s.settingsManager.GetSettings().RequestLogWriteIntervalMinutes*5) * time.Minute
-	if err := s.store.Set(cacheKey, logBytes, ttl); err != nil {
-		return err
-	}
-
-	return s.store.SAdd(PendingLogKeysSet, cacheKey)
+	snapshot := *log
+	s.pendingMu.Lock()
+	s.pending = append(s.pending, &snapshot)
+	s.pendingMu.Unlock()
+	return nil
 }
 
-// flush data from cache to database
-func (s *RequestLogService) flush() {
-	if s.settingsManager.GetSettings().RequestLogWriteIntervalMinutes == 0 {
-		logrus.Debug("Sync mode enabled, skipping scheduled log flush.")
-		return
-	}
-
-	logrus.Debug("Master starting to flush request logs...")
+func (s *LogService) flush(ctx context.Context) error {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
 
 	for {
-		keys, err := s.store.SPopN(PendingLogKeysSet, DefaultLogFlushBatchSize)
-		if err != nil {
-			logrus.Errorf("Failed to pop pending log keys from store: %v", err)
-			return
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		s.pendingMu.Lock()
+		count := min(len(s.pending), DefaultLogFlushBatchSize)
+		if count == 0 {
+			s.pendingMu.Unlock()
+			return nil
+		}
+		logs := s.pending[:count]
+		s.pendingMu.Unlock()
+
+		if err := s.writeLogsToDB(ctx, logs); err != nil {
+			return err
 		}
 
-		if len(keys) == 0 {
-			return
-		}
-
-		logrus.Debugf("Popped %d request logs to flush.", len(keys))
-
-		var logs []*models.RequestLog
-		var processedKeys []string
-		for _, key := range keys {
-			logBytes, err := s.store.Get(key)
-			if err != nil {
-				if err == store.ErrNotFound {
-					logrus.Warnf("Log key %s found in set but not in store, skipping.", key)
-				} else {
-					logrus.Warnf("Failed to get log for key %s: %v", key, err)
-				}
-				continue
-			}
-			var log models.RequestLog
-			if err := json.Unmarshal(logBytes, &log); err != nil {
-				logrus.Warnf("Failed to unmarshal log for key %s: %v", key, err)
-				continue
-			}
-			logs = append(logs, &log)
-			processedKeys = append(processedKeys, key)
-		}
-
-		if len(logs) == 0 {
-			continue
-		}
-
-		err = s.writeLogsToDB(logs)
-
-		if err != nil {
-			logrus.Errorf("Failed to flush request logs batch, will retry next time. Error: %v", err)
-			if len(keys) > 0 {
-				keysToRetry := make([]any, len(keys))
-				for i, k := range keys {
-					keysToRetry[i] = k
-				}
-				if saddErr := s.store.SAdd(PendingLogKeysSet, keysToRetry...); saddErr != nil {
-					logrus.Errorf("CRITICAL: Failed to re-add failed log keys to set: %v", saddErr)
-				}
-			}
-			return
-		}
-
-		if len(processedKeys) > 0 {
-			if err := s.store.Del(processedKeys...); err != nil {
-				logrus.Errorf("Failed to delete flushed log bodies from store: %v", err)
-			}
-		}
-		logrus.Infof("Successfully flushed %d request logs.", len(logs))
+		s.pendingMu.Lock()
+		clear(s.pending[:count])
+		s.pending = s.pending[count:]
+		s.pendingMu.Unlock()
+		logrus.Infof("Successfully flushed %d request logs", count)
 	}
 }
 
 // writeLogsToDB writes a batch of request logs to the database
-func (s *RequestLogService) writeLogsToDB(logs []*models.RequestLog) error {
+func (s *LogService) writeLogsToDB(ctx context.Context, logs []*models.RequestLog) error {
 	if len(logs) == 0 {
 		return nil
 	}
 
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.CreateInBatches(logs, len(logs)).Error; err != nil {
 			return fmt.Errorf("failed to batch insert request logs: %w", err)
 		}
@@ -239,15 +184,15 @@ func (s *RequestLogService) writeLogsToDB(logs []*models.RequestLog) error {
 				lastUsedAtCase.WriteString("CASE key_hash ")
 
 				requestCountArgs := make([]any, 0, len(keyStats)*2)
-				lastUsedAtArgs := make([]any, 0, len(keyStats)*2)
+				lastUsedAtArgs := make([]any, 0, len(keyStats)*3)
 				keyHashes := make([]string, 0, len(keyStats))
 
 				for keyHash, stats := range keyStats {
 					requestCountCase.WriteString("WHEN ? THEN request_count + ? ")
 					requestCountArgs = append(requestCountArgs, keyHash, stats.Count)
 
-					lastUsedAtCase.WriteString("WHEN ? THEN ? ")
-					lastUsedAtArgs = append(lastUsedAtArgs, keyHash, stats.LastUsedAt)
+					lastUsedAtCase.WriteString("WHEN ? THEN CASE WHEN last_used_at IS NULL OR last_used_at < ? THEN ? ELSE last_used_at END ")
+					lastUsedAtArgs = append(lastUsedAtArgs, keyHash, stats.LastUsedAt, stats.LastUsedAt)
 
 					keyHashes = append(keyHashes, keyHash)
 				}
@@ -266,7 +211,7 @@ func (s *RequestLogService) writeLogsToDB(logs []*models.RequestLog) error {
 			}
 		}
 
-		// 更新统计表
+		// Update hourly group statistics.
 		hourlyStats := make(map[struct {
 			Time    time.Time
 			GroupID uint

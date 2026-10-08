@@ -9,7 +9,7 @@ import (
 
 // GetTaskStatus handles requests for the status of the global long-running task.
 func (s *Server) GetTaskStatus(c *gin.Context) {
-	taskStatus, err := s.TaskService.GetTaskStatus()
+	taskStatus, err := s.KeyService.GetTaskStatus()
 	if err != nil {
 		response.ErrorI18nFromAPIError(c, app_errors.ErrInternalServer, "task.get_status_failed")
 		return

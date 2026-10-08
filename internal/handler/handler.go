@@ -6,71 +6,53 @@ import (
 	"net/http"
 	"time"
 
+	"gpt-load/internal/channel"
 	"gpt-load/internal/config"
 	"gpt-load/internal/encryption"
 	"gpt-load/internal/i18n"
+	"gpt-load/internal/response"
 	"gpt-load/internal/services"
 	"gpt-load/internal/types"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/dig"
 	"gorm.io/gorm"
 )
 
 // Server contains dependencies for HTTP handlers
 type Server struct {
-	DB                         *gorm.DB
-	config                     types.ConfigManager
-	SettingsManager            *config.SystemSettingsManager
-	GroupManager               *services.GroupManager
-	GroupService               *services.GroupService
-	AggregateGroupService      *services.AggregateGroupService
-	KeyManualValidationService *services.KeyManualValidationService
-	TaskService                *services.TaskService
-	KeyService                 *services.KeyService
-	KeyImportService           *services.KeyImportService
-	KeyDeleteService           *services.KeyDeleteService
-	LogService                 *services.LogService
-	CommonHandler              *CommonHandler
-	EncryptionSvc              encryption.Service
+	DB              *gorm.DB
+	config          types.ConfigManager
+	SettingsManager *config.SystemSettingsManager
+	GroupManager    *services.GroupManager
+	GroupService    *services.GroupService
+	KeyService      *services.KeyService
+	LogService      *services.LogService
+	EncryptionSvc   encryption.Service
 }
 
 // NewServerParams defines the dependencies for the NewServer constructor.
 type NewServerParams struct {
-	dig.In
-	DB                         *gorm.DB
-	Config                     types.ConfigManager
-	SettingsManager            *config.SystemSettingsManager
-	GroupManager               *services.GroupManager
-	GroupService               *services.GroupService
-	AggregateGroupService      *services.AggregateGroupService
-	KeyManualValidationService *services.KeyManualValidationService
-	TaskService                *services.TaskService
-	KeyService                 *services.KeyService
-	KeyImportService           *services.KeyImportService
-	KeyDeleteService           *services.KeyDeleteService
-	LogService                 *services.LogService
-	CommonHandler              *CommonHandler
-	EncryptionSvc              encryption.Service
+	DB              *gorm.DB
+	Config          types.ConfigManager
+	SettingsManager *config.SystemSettingsManager
+	GroupManager    *services.GroupManager
+	GroupService    *services.GroupService
+	KeyService      *services.KeyService
+	LogService      *services.LogService
+	EncryptionSvc   encryption.Service
 }
 
-// NewServer creates a new handler instance with dependencies injected by dig.
+// NewServer creates a new handler instance with explicit dependencies.
 func NewServer(params NewServerParams) *Server {
 	return &Server{
-		DB:                         params.DB,
-		config:                     params.Config,
-		SettingsManager:            params.SettingsManager,
-		GroupManager:               params.GroupManager,
-		GroupService:               params.GroupService,
-		AggregateGroupService:      params.AggregateGroupService,
-		KeyManualValidationService: params.KeyManualValidationService,
-		TaskService:                params.TaskService,
-		KeyService:                 params.KeyService,
-		KeyImportService:           params.KeyImportService,
-		KeyDeleteService:           params.KeyDeleteService,
-		LogService:                 params.LogService,
-		CommonHandler:              params.CommonHandler,
-		EncryptionSvc:              params.EncryptionSvc,
+		DB:              params.DB,
+		config:          params.Config,
+		SettingsManager: params.SettingsManager,
+		GroupManager:    params.GroupManager,
+		GroupService:    params.GroupService,
+		KeyService:      params.KeyService,
+		LogService:      params.LogService,
+		EncryptionSvc:   params.EncryptionSvc,
 	}
 }
 
@@ -127,4 +109,9 @@ func (s *Server) Health(c *gin.Context) {
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 		"uptime":    uptime,
 	})
+}
+
+// GetChannelTypes returns the available channel types.
+func (s *Server) GetChannelTypes(c *gin.Context) {
+	response.Success(c, channel.GetChannels())
 }

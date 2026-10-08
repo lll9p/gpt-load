@@ -8,13 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"gpt-load/internal/app"
 	"gpt-load/internal/commands"
-	"gpt-load/internal/container"
-	"gpt-load/internal/types"
-	"gpt-load/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -65,49 +61,24 @@ func printHelp() {
 	fmt.Println("Use 'gpt-load <command> --help' for more information about a command.")
 }
 
-// runServer run App Server
+// runServer constructs the application and manages its lifecycle.
 func runServer() {
-	// Build the dependency injection container
-	container, err := container.BuildContainer()
+	application, err := app.NewApp(buildFS, indexPage)
 	if err != nil {
-		logrus.Fatalf("Failed to build container: %v", err)
+		logrus.Fatalf("Failed to initialize application: %v", err)
 	}
-
-	// Provide UI assets to the container
-	if err := container.Provide(func() embed.FS { return buildFS }); err != nil {
-		logrus.Fatalf("Failed to provide buildFS: %v", err)
+	if err := application.Start(); err != nil {
+		logrus.Fatalf("Failed to start application: %v", err)
 	}
-	if err := container.Provide(func() []byte { return indexPage }); err != nil {
-		logrus.Fatalf("Failed to provide indexPage: %v", err)
-	}
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+	<-quit
 
-	// Initialize global logger
-	if err := container.Invoke(func(configManager types.ConfigManager) {
-		utils.SetupLogger(configManager)
-	}); err != nil {
-		logrus.Fatalf("Failed to setup logger: %v", err)
-	}
-
-	// Create and run the application
-	if err := container.Invoke(func(application *app.App, configManager types.ConfigManager) {
-		if err := application.Start(); err != nil {
-			logrus.Fatalf("Failed to start application: %v", err)
-		}
-
-		// Wait for interrupt signal for graceful shutdown
-		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		<-quit
-
-		// Create a context with timeout for shutdown
-		serverConfig := configManager.GetEffectiveServerConfig()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(serverConfig.GracefulShutdownTimeout)*time.Second)
-		defer cancel()
-
-		// Perform graceful shutdown
-		application.Stop(shutdownCtx)
-
-	}); err != nil {
-		logrus.Fatalf("Failed to run application: %v", err)
+	ctx, cancel := context.WithTimeout(context.Background(), application.GracefulShutdownTimeout())
+	defer cancel()
+	if err := application.Stop(ctx); err != nil {
+		logrus.Errorf("Application shutdown failed: %v", err)
+		os.Exit(1)
 	}
 }

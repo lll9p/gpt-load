@@ -20,7 +20,6 @@ import (
 	"gpt-load/internal/utils"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -51,14 +50,12 @@ func NewI18nError(apiErr *app_errors.APIError, msgID string, template map[string
 
 // GroupService handles business logic for group operations.
 type GroupService struct {
-	db                    *gorm.DB
-	settingsManager       *config.SystemSettingsManager
-	groupManager          *GroupManager
-	keyService            *KeyService
-	keyImportSvc          *KeyImportService
-	encryptionSvc         encryption.Service
-	aggregateGroupService *AggregateGroupService
-	channelRegistry       []string
+	db              *gorm.DB
+	settingsManager *config.SystemSettingsManager
+	groupManager    *GroupManager
+	keyService      *KeyService
+	encryptionSvc   encryption.Service
+	channelRegistry []string
 }
 
 // NewGroupService constructs a GroupService.
@@ -67,19 +64,15 @@ func NewGroupService(
 	settingsManager *config.SystemSettingsManager,
 	groupManager *GroupManager,
 	keyService *KeyService,
-	keyImportSvc *KeyImportService,
 	encryptionSvc encryption.Service,
-	aggregateGroupService *AggregateGroupService,
 ) *GroupService {
 	return &GroupService{
-		db:                    db,
-		settingsManager:       settingsManager,
-		groupManager:          groupManager,
-		keyService:            keyService,
-		keyImportSvc:          keyImportSvc,
-		encryptionSvc:         encryptionSvc,
-		aggregateGroupService: aggregateGroupService,
-		channelRegistry:       channel.GetChannels(),
+		db:              db,
+		settingsManager: settingsManager,
+		groupManager:    groupManager,
+		keyService:      keyService,
+		encryptionSvc:   encryptionSvc,
+		channelRegistry: channel.GetChannels(),
 	}
 }
 
@@ -182,14 +175,14 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_group_type", nil)
 	}
 
-	var cleanedUpstreams datatypes.JSON
+	var cleanedUpstreams json.RawMessage
 	var testModel string
 	var validationEndpoint string
 
 	switch groupType {
 	case "aggregate":
 		validationEndpoint = ""
-		cleanedUpstreams = datatypes.JSON("[]")
+		cleanedUpstreams = json.RawMessage("[]")
 		testModel = "-"
 	case "standard":
 		testModel = strings.TrimSpace(params.TestModel)
@@ -218,7 +211,7 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		return nil, err
 	}
 	if headerRulesJSON == nil {
-		headerRulesJSON = datatypes.JSON("[]")
+		headerRulesJSON = json.RawMessage("[]")
 	}
 
 	// Validate model redirect rules for aggregate groups
@@ -236,16 +229,16 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		DisplayName:         strings.TrimSpace(params.DisplayName),
 		Description:         strings.TrimSpace(params.Description),
 		GroupType:           groupType,
-		Upstreams:           cleanedUpstreams,
+		Upstreams:           models.JSON(cleanedUpstreams),
 		ChannelType:         channelType,
 		Sort:                params.Sort,
 		TestModel:           testModel,
 		ValidationEndpoint:  validationEndpoint,
-		ParamOverrides:      params.ParamOverrides,
-		ModelRedirectRules:  convertToJSONMap(params.ModelRedirectRules),
+		ParamOverrides:      models.JSONMap(params.ParamOverrides),
+		ModelRedirectRules:  models.JSONMap(convertToJSONMap(params.ModelRedirectRules)),
 		ModelRedirectStrict: params.ModelRedirectStrict,
-		Config:              cleanedConfig,
-		HeaderRules:         headerRulesJSON,
+		Config:              models.JSONMap(cleanedConfig),
+		HeaderRules:         models.JSON(headerRulesJSON),
 		ProxyKeys:           strings.TrimSpace(params.ProxyKeys),
 	}
 
@@ -263,8 +256,8 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		return nil, app_errors.ParseDBError(err)
 	}
 
-	if err := s.groupManager.Invalidate(); err != nil {
-		logrus.WithContext(ctx).WithError(err).Error("failed to invalidate group cache")
+	if err := s.groupManager.Reload(); err != nil {
+		return nil, err
 	}
 
 	return &group, nil
@@ -339,8 +332,8 @@ func (s *GroupService) ReorderGroups(ctx context.Context, items []GroupReorderIt
 	}
 	tx = nil
 
-	if err := s.groupManager.Invalidate(); err != nil {
-		logrus.WithContext(ctx).WithError(err).Error("failed to invalidate group cache")
+	if err := s.groupManager.Reload(); err != nil {
+		return err
 	}
 
 	return nil
@@ -348,16 +341,17 @@ func (s *GroupService) ReorderGroups(ctx context.Context, items []GroupReorderIt
 
 // UpdateGroup validates and updates an existing group.
 func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpdateParams) (*models.Group, error) {
-	var group models.Group
-	if err := s.db.WithContext(ctx).First(&group, id).Error; err != nil {
-		return nil, app_errors.ParseDBError(err)
-	}
-
 	tx := s.db.WithContext(ctx).Begin()
 	if err := tx.Error; err != nil {
 		return nil, app_errors.ErrDatabase
 	}
 	defer tx.Rollback()
+
+	var group models.Group
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&group, id).Error; err != nil {
+		return nil, app_errors.ParseDBError(err)
+	}
+	changedFields := []string{"updated_at"}
 
 	if params.Name != nil {
 		cleanedName := strings.TrimSpace(*params.Name)
@@ -365,14 +359,17 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_group_name", nil)
 		}
 		group.Name = cleanedName
+		changedFields = append(changedFields, "name")
 	}
 
 	if params.DisplayName != nil {
 		group.DisplayName = strings.TrimSpace(*params.DisplayName)
+		changedFields = append(changedFields, "display_name")
 	}
 
 	if params.Description != nil {
 		group.Description = strings.TrimSpace(*params.Description)
+		changedFields = append(changedFields, "description")
 	}
 
 	if params.HasUpstreams {
@@ -380,12 +377,13 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		if err != nil {
 			return nil, err
 		}
-		group.Upstreams = cleanedUpstreams
+		group.Upstreams = models.JSON(cleanedUpstreams)
+		changedFields = append(changedFields, "upstreams")
 	}
 
 	// Check if this group is used as a sub-group in aggregate groups before allowing critical changes
 	if group.GroupType != "aggregate" && (params.ChannelType != nil || params.ValidationEndpoint != nil) {
-		count, err := s.aggregateGroupService.CountAggregateGroupsUsingSubGroup(ctx, group.ID)
+		count, err := s.CountAggregateGroupsUsingSubGroup(tx, group.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -418,10 +416,12 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_channel_type", map[string]any{"types": supported})
 		}
 		group.ChannelType = cleanedChannelType
+		changedFields = append(changedFields, "channel_type")
 	}
 
 	if params.Sort != nil {
 		group.Sort = *params.Sort
+		changedFields = append(changedFields, "sort")
 	}
 
 	if params.HasTestModel {
@@ -430,10 +430,12 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_empty", nil)
 		}
 		group.TestModel = cleanedTestModel
+		changedFields = append(changedFields, "test_model")
 	}
 
 	if params.ParamOverrides != nil {
-		group.ParamOverrides = params.ParamOverrides
+		group.ParamOverrides = models.JSONMap(params.ParamOverrides)
+		changedFields = append(changedFields, "param_overrides")
 	}
 
 	// Validate model redirect rules for aggregate groups
@@ -446,11 +448,13 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		if err := validateModelRedirectRules(params.ModelRedirectRules); err != nil {
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_model_redirect", map[string]any{"error": err.Error()})
 		}
-		group.ModelRedirectRules = convertToJSONMap(params.ModelRedirectRules)
+		group.ModelRedirectRules = models.JSONMap(convertToJSONMap(params.ModelRedirectRules))
+		changedFields = append(changedFields, "model_redirect_rules")
 	}
 
 	if params.ModelRedirectStrict != nil {
 		group.ModelRedirectStrict = *params.ModelRedirectStrict
+		changedFields = append(changedFields, "model_redirect_strict")
 	}
 
 	if params.ValidationEndpoint != nil {
@@ -459,6 +463,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_test_path", nil)
 		}
 		group.ValidationEndpoint = validationEndpoint
+		changedFields = append(changedFields, "validation_endpoint")
 	}
 
 	if params.Config != nil {
@@ -466,11 +471,13 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		if err != nil {
 			return nil, err
 		}
-		group.Config = cleanedConfig
+		group.Config = models.JSONMap(cleanedConfig)
+		changedFields = append(changedFields, "config")
 	}
 
 	if params.ProxyKeys != nil {
 		group.ProxyKeys = strings.TrimSpace(*params.ProxyKeys)
+		changedFields = append(changedFields, "proxy_keys")
 	}
 
 	if params.HeaderRules != nil {
@@ -479,21 +486,27 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 			return nil, err
 		}
 		if headerRulesJSON == nil {
-			headerRulesJSON = datatypes.JSON("[]")
+			headerRulesJSON = json.RawMessage("[]")
 		}
-		group.HeaderRules = headerRulesJSON
+		group.HeaderRules = models.JSON(headerRulesJSON)
+		changedFields = append(changedFields, "header_rules")
 	}
 
-	if err := tx.Save(&group).Error; err != nil {
-		return nil, app_errors.ParseDBError(err)
+	// Select keeps zero values and JSON serializers without updating unrequested fields.
+	result := tx.Model(&group).Select(changedFields).Updates(&group)
+	if result.Error != nil {
+		return nil, app_errors.ParseDBError(result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, app_errors.ErrResourceNotFound
 	}
 
 	if err := tx.Commit().Error; err != nil {
 		return nil, app_errors.ErrDatabase
 	}
 
-	if err := s.groupManager.Invalidate(); err != nil {
-		logrus.WithContext(ctx).WithError(err).Error("failed to invalidate group cache")
+	if err := s.groupManager.Reload(); err != nil {
+		return nil, err
 	}
 
 	return &group, nil
@@ -501,16 +514,6 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 
 // DeleteGroup removes a group and associated resources.
 func (s *GroupService) DeleteGroup(ctx context.Context, id uint) error {
-	var apiKeys []models.APIKey
-	if err := s.db.WithContext(ctx).Where("group_id = ?", id).Find(&apiKeys).Error; err != nil {
-		return app_errors.ParseDBError(err)
-	}
-
-	keyIDs := make([]uint, 0, len(apiKeys))
-	for _, key := range apiKeys {
-		keyIDs = append(keyIDs, key.ID)
-	}
-
 	tx := s.db.WithContext(ctx).Begin()
 	if err := tx.Error; err != nil {
 		return app_errors.ErrDatabase
@@ -538,23 +541,14 @@ func (s *GroupService) DeleteGroup(ctx context.Context, id uint) error {
 		return app_errors.ParseDBError(err)
 	}
 
-	if len(keyIDs) > 0 {
-		if err := s.keyService.KeyProvider.RemoveKeysFromStore(id, keyIDs); err != nil {
-			logrus.WithContext(ctx).WithFields(logrus.Fields{
-				"groupID":  id,
-				"keyCount": len(keyIDs),
-			}).WithError(err).Error("failed to remove keys from memory store, rolling back transaction")
-			return NewI18nError(app_errors.ErrDatabase, "error.delete_group_cache", nil)
-		}
-	}
-
 	if err := tx.Commit().Error; err != nil {
 		return app_errors.ErrDatabase
 	}
 	tx = nil
+	s.keyService.KeyProvider.RemoveGroup(id)
 
-	if err := s.groupManager.Invalidate(); err != nil {
-		logrus.WithContext(ctx).WithError(err).Error("failed to invalidate group cache")
+	if err := s.groupManager.Reload(); err != nil {
+		return err
 	}
 
 	return nil
@@ -587,7 +581,11 @@ func (s *GroupService) CopyGroup(ctx context.Context, sourceGroupID uint, copyKe
 
 	newGroup := sourceGroup
 	newGroup.ID = 0
-	newGroup.Name = s.generateUniqueGroupName(ctx, sourceGroup.Name)
+	name, err := s.generateUniqueGroupName(tx, sourceGroup.Name)
+	if err != nil {
+		return nil, err
+	}
+	newGroup.Name = name
 	if sourceGroup.DisplayName != "" {
 		newGroup.DisplayName = sourceGroup.DisplayName + " Copy"
 	}
@@ -613,11 +611,24 @@ func (s *GroupService) CopyGroup(ctx context.Context, sourceGroupID uint, copyKe
 		for _, sourceKey := range sourceKeys {
 			decryptedKey, err := s.encryptionSvc.Decrypt(sourceKey.KeyValue)
 			if err != nil {
-				logrus.WithContext(ctx).WithError(err).WithField("key_id", sourceKey.ID).Error("failed to decrypt key during group copy, skipping")
-				continue
+				return nil, fmt.Errorf("failed to decrypt key %d during group copy: %w", sourceKey.ID, err)
 			}
 			sourceKeyValues = append(sourceKeyValues, decryptedKey)
 		}
+	}
+
+	importReserved := false
+	if len(sourceKeyValues) > 0 {
+		if _, err := s.keyService.reserveTask(TaskTypeKeyImport, newGroup.Name, len(sourceKeyValues)); err != nil {
+			return nil, app_errors.NewAPIError(app_errors.ErrTaskInProgress, err.Error())
+		}
+		importReserved = true
+		defer func() {
+			if importReserved {
+				s.keyService.endTask(nil, fmt.Errorf("group copy failed before key import started"))
+				s.keyService.tasks.wg.Done()
+			}
+		}()
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -625,23 +636,20 @@ func (s *GroupService) CopyGroup(ctx context.Context, sourceGroupID uint, copyKe
 	}
 	tx = nil
 
-	if err := s.groupManager.Invalidate(); err != nil {
-		logrus.WithContext(ctx).WithError(err).Error("failed to invalidate group cache")
+	if len(sourceKeyValues) > 0 {
+		go func(groupID uint, keys []string) {
+			defer s.keyService.tasks.wg.Done()
+			s.keyService.runImport(groupID, keys)
+		}(newGroup.ID, sourceKeyValues)
+		importReserved = false
+		logrus.WithContext(ctx).WithFields(logrus.Fields{
+			"groupId":  newGroup.ID,
+			"keyCount": len(sourceKeyValues),
+		}).Info("started async key import task for group copy")
 	}
 
-	if len(sourceKeyValues) > 0 {
-		keysText := strings.Join(sourceKeyValues, "\n")
-		if _, err := s.keyImportSvc.StartImportTask(&newGroup, keysText); err != nil {
-			logrus.WithContext(ctx).WithFields(logrus.Fields{
-				"groupId":  newGroup.ID,
-				"keyCount": len(sourceKeyValues),
-			}).WithError(err).Error("failed to start async key import task for group copy")
-		} else {
-			logrus.WithContext(ctx).WithFields(logrus.Fields{
-				"groupId":  newGroup.ID,
-				"keyCount": len(sourceKeyValues),
-			}).Info("started async key import task for group copy")
-		}
+	if err := s.groupManager.Reload(); err != nil {
+		return nil, err
 	}
 
 	return &newGroup, nil
@@ -770,10 +778,6 @@ func (s *GroupService) getStandardGroupStats(ctx context.Context, groupID uint) 
 	// Handle errors
 	if len(allErrors) > 0 {
 		logrus.WithContext(ctx).WithError(allErrors[0]).Error("errors occurred while fetching group stats")
-		// Return partial stats if we have some data
-		if stats.Stats24Hour.TotalRequests > 0 || stats.Stats7Day.TotalRequests > 0 || stats.Stats30Day.TotalRequests > 0 {
-			return stats, nil
-		}
 		return nil, NewI18nError(app_errors.ErrDatabase, "database.group_stats_failed", nil)
 	}
 
@@ -786,10 +790,6 @@ func (s *GroupService) getAggregateGroupStats(ctx context.Context, groupID uint)
 	// Aggregate groups only need request statistics, not key statistics
 	if errs := s.fetchRequestStats(ctx, groupID, stats); len(errs) > 0 {
 		logrus.WithContext(ctx).WithError(errs[0]).Error("errors occurred while fetching aggregate group stats")
-		// Return partial stats if we have some data
-		if stats.Stats24Hour.TotalRequests > 0 || stats.Stats7Day.TotalRequests > 0 || stats.Stats30Day.TotalRequests > 0 {
-			return stats, nil
-		}
 		return nil, NewI18nError(app_errors.ErrDatabase, "database.group_stats_failed", nil)
 	}
 
@@ -900,7 +900,7 @@ func (s *GroupService) validateAndCleanConfig(configMap map[string]any) (map[str
 }
 
 // normalizeHeaderRules deduplicates and normalises header rules.
-func (s *GroupService) normalizeHeaderRules(rules []models.HeaderRule) (datatypes.JSON, error) {
+func (s *GroupService) normalizeHeaderRules(rules []models.HeaderRule) (json.RawMessage, error) {
 	if len(rules) == 0 {
 		return nil, nil
 	}
@@ -930,11 +930,11 @@ func (s *GroupService) normalizeHeaderRules(rules []models.HeaderRule) (datatype
 		return nil, NewI18nError(app_errors.ErrInternalServer, "error.process_header_rules", map[string]any{"error": err.Error()})
 	}
 
-	return datatypes.JSON(headerRulesBytes), nil
+	return json.RawMessage(headerRulesBytes), nil
 }
 
 // validateAndCleanUpstreams validates upstream definitions.
-func (s *GroupService) validateAndCleanUpstreams(upstreams json.RawMessage) (datatypes.JSON, error) {
+func (s *GroupService) validateAndCleanUpstreams(upstreams json.RawMessage) (json.RawMessage, error) {
 	if len(upstreams) == 0 {
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_upstreams", map[string]any{"error": "upstreams field is required"})
 	}
@@ -977,7 +977,7 @@ func (s *GroupService) validateAndCleanUpstreams(upstreams json.RawMessage) (dat
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_upstreams", map[string]any{"error": err.Error()})
 	}
 
-	return datatypes.JSON(cleanedUpstreams), nil
+	return json.RawMessage(cleanedUpstreams), nil
 }
 
 func calculateRequestStats(total, failed int64) RequestStats {
@@ -992,10 +992,10 @@ func calculateRequestStats(total, failed int64) RequestStats {
 	return stats
 }
 
-func (s *GroupService) generateUniqueGroupName(ctx context.Context, baseName string) string {
+func (s *GroupService) generateUniqueGroupName(db *gorm.DB, baseName string) (string, error) {
 	var groups []models.Group
-	if err := s.db.WithContext(ctx).Select("name").Find(&groups).Error; err != nil {
-		return baseName + "_copy"
+	if err := db.Select("name").Find(&groups).Error; err != nil {
+		return "", app_errors.ParseDBError(err)
 	}
 
 	existingNames := make(map[string]bool, len(groups))
@@ -1005,17 +1005,17 @@ func (s *GroupService) generateUniqueGroupName(ctx context.Context, baseName str
 
 	copyName := baseName + "_copy"
 	if !existingNames[copyName] {
-		return copyName
+		return copyName, nil
 	}
 
 	for i := 2; i <= 1000; i++ {
 		candidate := fmt.Sprintf("%s_copy_%d", baseName, i)
 		if !existingNames[candidate] {
-			return candidate
+			return candidate, nil
 		}
 	}
 
-	return copyName
+	return "", fmt.Errorf("no available copy name for group %s", baseName)
 }
 
 // isValidGroupName validates the group name.
@@ -1051,13 +1051,13 @@ func (s *GroupService) isValidChannelType(channelType string) bool {
 	return false
 }
 
-// convertToJSONMap converts a map[string]string to datatypes.JSONMap
-func convertToJSONMap(input map[string]string) datatypes.JSONMap {
+// convertToJSONMap converts string rules to a JSON object.
+func convertToJSONMap(input map[string]string) map[string]any {
 	if len(input) == 0 {
-		return datatypes.JSONMap{}
+		return map[string]any{}
 	}
 
-	result := make(datatypes.JSONMap)
+	result := make(map[string]any)
 	for k, v := range input {
 		result[k] = v
 	}

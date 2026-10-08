@@ -28,14 +28,14 @@ func (e embedFileSystem) Exists(prefix string, path string) bool {
 	return err == nil
 }
 
-func EmbedFolder(fsEmbed embed.FS, targetPath string) static.ServeFileSystem {
+func EmbedFolder(fsEmbed embed.FS, targetPath string) (static.ServeFileSystem, error) {
 	efs, err := fs.Sub(fsEmbed, targetPath)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return embedFileSystem{
 		FileSystem: http.FS(efs),
-	}
+	}, nil
 }
 
 func NewRouter(
@@ -45,7 +45,7 @@ func NewRouter(
 	groupManager *services.GroupManager,
 	buildFS embed.FS,
 	indexPage []byte,
-) *gin.Engine {
+) (*gin.Engine, error) {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
@@ -67,9 +67,11 @@ func NewRouter(
 	registerSystemRoutes(router, serverHandler)
 	registerAPIRoutes(router, serverHandler, configManager)
 	registerProxyRoutes(router, proxyServer, groupManager, serverHandler)
-	registerFrontendRoutes(router, buildFS, indexPage)
+	if err := registerFrontendRoutes(router, buildFS, indexPage); err != nil {
+		return nil, err
+	}
 
-	return router
+	return router, nil
 }
 
 // registerSystemRoutes 注册系统级路由
@@ -105,7 +107,7 @@ func registerPublicAPIRoutes(api *gin.RouterGroup, serverHandler *handler.Server
 
 // registerProtectedAPIRoutes 认证API路由
 func registerProtectedAPIRoutes(api *gin.RouterGroup, serverHandler *handler.Server) {
-	api.GET("/channel-types", serverHandler.CommonHandler.GetChannelTypes)
+	api.GET("/channel-types", serverHandler.GetChannelTypes)
 
 	groups := api.Group("/groups")
 	{
@@ -186,7 +188,11 @@ func registerProxyRoutes(
 }
 
 // registerFrontendRoutes 注册前端路由
-func registerFrontendRoutes(router *gin.Engine, buildFS embed.FS, indexPage []byte) {
+func registerFrontendRoutes(router *gin.Engine, buildFS embed.FS, indexPage []byte) error {
+	assets, err := EmbedFolder(buildFS, "web/dist")
+	if err != nil {
+		return err
+	}
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.NoMethod(func(c *gin.Context) {
 		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "Method not allowed"})
@@ -195,7 +201,7 @@ func registerFrontendRoutes(router *gin.Engine, buildFS embed.FS, indexPage []by
 	// 使用静态资源缓存中间件
 	router.Use(middleware.StaticCache())
 
-	router.Use(static.Serve("/", EmbedFolder(buildFS, "web/dist")))
+	router.Use(static.Serve("/", assets))
 	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/proxy") {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Not Found"})
@@ -207,4 +213,5 @@ func registerFrontendRoutes(router *gin.Engine, buildFS embed.FS, indexPage []by
 		c.Header("Expires", "0")
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexPage)
 	})
+	return nil
 }

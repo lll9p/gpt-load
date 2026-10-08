@@ -14,7 +14,6 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/datatypes"
 )
 
 // UpstreamInfo holds the information for a single upstream server, including its weight.
@@ -36,9 +35,9 @@ type BaseChannel struct {
 
 	// Cached fields from the group for stale check
 	channelType         string
-	groupUpstreams      datatypes.JSON
+	groupUpstreams      models.JSON
 	effectiveConfig     *types.SystemSettings
-	modelRedirectRules  datatypes.JSONMap
+	modelRedirectRules  models.JSONMap
 	modelRedirectStrict bool
 }
 
@@ -65,10 +64,6 @@ func (b *BaseChannel) getUpstreamURL() *url.URL {
 		if best == nil || up.CurrentWeight > best.CurrentWeight {
 			best = up
 		}
-	}
-
-	if best == nil {
-		return b.Upstreams[0].URL // 降级到第一个可用的
 	}
 
 	best.CurrentWeight -= totalWeight

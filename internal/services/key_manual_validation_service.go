@@ -2,16 +2,11 @@ package services
 
 import (
 	"fmt"
-	"gpt-load/internal/config"
-	"gpt-load/internal/encryption"
-	"gpt-load/internal/keypool"
 	"gpt-load/internal/models"
-	"gpt-load/internal/types"
 	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 )
 
 // ManualValidationResult holds the result of a manual validation task.
@@ -21,139 +16,99 @@ type ManualValidationResult struct {
 	InvalidKeys int `json:"invalid_keys"`
 }
 
-// KeyManualValidationService handles user-initiated key validation for a group.
-type KeyManualValidationService struct {
-	DB              *gorm.DB
-	Validator       *keypool.KeyValidator
-	TaskService     *TaskService
-	SettingsManager *config.SystemSettingsManager
-	ConfigManager   types.ConfigManager
-	EncryptionSvc   encryption.Service
-}
-
-// NewKeyManualValidationService creates a new KeyManualValidationService.
-func NewKeyManualValidationService(db *gorm.DB, validator *keypool.KeyValidator, taskService *TaskService, settingsManager *config.SystemSettingsManager, configManager types.ConfigManager, encryptionSvc encryption.Service) *KeyManualValidationService {
-	return &KeyManualValidationService{
-		DB:              db,
-		Validator:       validator,
-		TaskService:     taskService,
-		SettingsManager: settingsManager,
-		ConfigManager:   configManager,
-		EncryptionSvc:   encryptionSvc,
-	}
-}
-
 // StartValidationTask starts a new manual validation task for a given group.
-func (s *KeyManualValidationService) StartValidationTask(group *models.Group, status string) (*TaskStatus, error) {
+func (s *KeyService) StartValidationTask(group *models.Group, status string) (*TaskStatus, error) {
+	if status != "" && status != models.KeyStatusActive && status != models.KeyStatusInvalid {
+		return nil, fmt.Errorf("invalid key status: %s", status)
+	}
+	groupCopy := *group
+	effectiveConfig, err := s.KeyValidator.SettingsManager.GetEffectiveConfig(groupCopy.Config)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config for group %s: %w", group.Name, err)
+	}
+	groupCopy.EffectiveConfig = effectiveConfig
+	if groupCopy.EffectiveConfig.KeyValidationConcurrency <= 0 {
+		return nil, fmt.Errorf("key validation concurrency must be positive")
+	}
+	taskStatus, err := s.reserveTask(TaskTypeKeyValidation, group.Name, 0)
+	if err != nil {
+		return nil, err
+	}
 	var keys []models.APIKey
 	query := s.DB.Where("group_id = ?", group.ID)
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
 	if err := query.Find(&keys).Error; err != nil {
-		return nil, fmt.Errorf("failed to get keys for group %s with status '%s': %w", group.Name, status, err)
+		taskErr := fmt.Errorf("failed to get keys for group %s with status '%s': %w", group.Name, status, err)
+		s.endTask(nil, taskErr)
+		s.tasks.wg.Done()
+		return nil, taskErr
 	}
-
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("no keys to validate in group %s", group.Name)
+		taskErr := fmt.Errorf("no keys to validate in group %s", group.Name)
+		s.endTask(nil, taskErr)
+		s.tasks.wg.Done()
+		return nil, taskErr
 	}
-
-	taskStatus, err := s.TaskService.StartTask(TaskTypeKeyValidation, group.Name, len(keys))
-	if err != nil {
-		return nil, err
-	}
-
-	// Run the validation in a separate goroutine
-	go s.runValidation(group, keys, status)
-
+	s.tasks.mu.Lock()
+	s.tasks.status.Total = len(keys)
+	taskStatus.Total = len(keys)
+	s.tasks.mu.Unlock()
+	go func() {
+		defer s.tasks.wg.Done()
+		s.runValidation(&groupCopy, keys, status)
+	}()
 	return taskStatus, nil
 }
 
-func (s *KeyManualValidationService) runValidation(group *models.Group, keys []models.APIKey, status string) {
-	logFields := logrus.Fields{
-		"group":  group.Name,
-		"status": status,
-	}
-	if status == "" {
-		logFields["status"] = "all"
-	}
-	logrus.WithFields(logFields).Info("Starting manual validation")
-
+func (s *KeyService) runValidation(group *models.Group, keys []models.APIKey, status string) {
+	logrus.WithFields(logrus.Fields{"group": group.Name, "status": status}).Info("Starting manual validation")
 	jobs := make(chan models.APIKey, len(keys))
 	results := make(chan bool, len(keys))
-
-	concurrency := group.EffectiveConfig.KeyValidationConcurrency
-
 	var wg sync.WaitGroup
-	for range concurrency {
+	for range group.EffectiveConfig.KeyValidationConcurrency {
 		wg.Add(1)
 		go s.validationWorker(&wg, group, jobs, results)
 	}
-
 	for _, key := range keys {
 		jobs <- key
 	}
 	close(jobs)
-
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
-
 	validCount := 0
 	processedCount := 0
 	lastUpdateTime := time.Now()
-
-	for isValid := range results {
+	for valid := range results {
 		processedCount++
-		if isValid {
+		if valid {
 			validCount++
 		}
-
-		// Throttle progress updates to once per second
 		if time.Since(lastUpdateTime) > time.Second {
-			if err := s.TaskService.UpdateProgress(processedCount); err != nil {
-				logrus.Warnf("Failed to update task progress: %v", err)
-			}
+			s.updateProgress(processedCount)
 			lastUpdateTime = time.Now()
 		}
 	}
-
-	// Ensure the final progress is always updated
-	if err := s.TaskService.UpdateProgress(processedCount); err != nil {
-		logrus.Warnf("Failed to update final task progress: %v", err)
-	}
-
-	result := ManualValidationResult{
-		TotalKeys:   len(keys),
-		ValidKeys:   validCount,
-		InvalidKeys: len(keys) - validCount,
-	}
-
-	// End the task and store the final result
-	if err := s.TaskService.EndTask(result, nil); err != nil {
-		logrus.Errorf("Failed to end task for group %s: %v", group.Name, err)
-	}
+	s.updateProgress(processedCount)
+	result := ManualValidationResult{TotalKeys: len(keys), ValidKeys: validCount, InvalidKeys: len(keys) - validCount}
 	logrus.Infof("Manual validation finished for group %s: %+v", group.Name, result)
+	s.endTask(result, nil)
 }
 
-// validationResult 包含验证结果信息
-func (s *KeyManualValidationService) validationWorker(wg *sync.WaitGroup, group *models.Group, jobs <-chan models.APIKey, results chan<- bool) {
+func (s *KeyService) validationWorker(wg *sync.WaitGroup, group *models.Group, jobs <-chan models.APIKey, results chan<- bool) {
 	defer wg.Done()
 	for key := range jobs {
-		// Decrypt the key before validation
-		decryptedKey, err := s.EncryptionSvc.Decrypt(key.KeyValue)
+		value, err := s.EncryptionSvc.Decrypt(key.KeyValue)
 		if err != nil {
-			logrus.WithError(err).WithField("key_id", key.ID).Error("Manual validation: Failed to decrypt key for validation, marking as invalid")
+			logrus.WithError(err).WithField("key_id", key.ID).Error("Manual validation: Failed to decrypt key, marking as invalid")
 			results <- false
 			continue
 		}
-
-		// Create a copy with decrypted value for validation
-		keyForValidation := key
-		keyForValidation.KeyValue = decryptedKey
-
-		isValid, _ := s.Validator.ValidateSingleKey(&keyForValidation, group)
-		results <- isValid
+		key.KeyValue = value
+		valid, _ := s.KeyValidator.ValidateSingleKey(&key, group)
+		results <- valid
 	}
 }

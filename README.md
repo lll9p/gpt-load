@@ -1,14 +1,14 @@
-# GPT-Load
+# GPT-Load Lite
 
 English | [中文](README_CN.md) | [日本語](README_JP.md)
 
-[![Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
-![Go Version](https://img.shields.io/badge/Go-1.24+-blue.svg)
+[![Upstream Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
+![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A high-performance, enterprise-grade AI API transparent proxy service designed specifically for enterprises and developers who need to integrate multiple AI services. Built with Go, featuring intelligent key management, load balancing, and comprehensive monitoring capabilities, designed for high-concurrency production environments.
+GPT-Load Lite is a single-instance edition of GPT-Load, an AI API transparent proxy built with Go. It retains intelligent key management, upstream load balancing, monitoring, dynamic configuration, authentication, and API key encryption.
 
-For more information, please visit the [Official Website](https://www.gpt-load.com/v1)
+For information about the original project, visit the [upstream website](https://www.gpt-load.com/v1). Its deployment instructions do not apply to Lite.
 
 <a href="https://trendshift.io/repositories/14880" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14880" alt="tbphp%2Fgpt-load | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 <a href="https://hellogithub.com/repository/tbphp/gpt-load" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=554dc4c46eb14092b9b0c56f1eb9021c&claim_uid=Qlh8vzrWJ0HCneG" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
@@ -43,7 +43,6 @@ For more information, please visit the [Official Website](https://www.gpt-load.c
 - **Load Balancing**: Weighted load balancing across multiple upstream endpoints to enhance service availability
 - **Smart Failure Handling**: Automatic key blacklist management and recovery mechanisms to ensure service continuity
 - **Dynamic Configuration**: System settings and group configurations support hot-reload without requiring restarts
-- **Enterprise Architecture**: Distributed leader-follower deployment supporting horizontal scaling and high availability
 - **Modern Management**: Vue 3-based web management interface that is intuitive and user-friendly
 - **Comprehensive Monitoring**: Real-time statistics, health checks, and detailed request logging
 - **High-Performance Design**: Zero-copy streaming, connection pool reuse, and atomic operations
@@ -62,48 +61,43 @@ GPT-Load serves as a transparent proxy service, completely preserving the native
 
 ### System Requirements
 
-- Go 1.24+ (for source builds)
+- Go 1.25+ (for source builds)
 - Docker (for containerized deployment)
-- MySQL, PostgreSQL, or SQLite (for database storage)
-- Redis (for caching and distributed coordination, optional)
+- SQLite (default, no separate database server required) or PostgreSQL
+
+**Single instance only:** GPT-Load Lite does not support multiple application instances sharing state, even with PostgreSQL. Pending batch logs and task status are held in memory and do not survive restarts. An abnormal exit may lose logs that have not yet been written to the database.
+
+Run the commands below from the root of your local GPT-Load Lite source checkout. Build from this source; upstream GPT-Load images and deployment files run the untrimmed version, not Lite.
 
 ### Method 1: Docker Quick Start
 
 ```bash
+# Build the local source image
+docker build -t gpt-load-lite:local .
+
 docker run -d --name gpt-load \
     -p 3001:3001 \
     -e AUTH_KEY=your-secure-key-here \
     -v "$(pwd)/data":/app/data \
-    ghcr.io/tbphp/gpt-load:1
+    gpt-load-lite:local
 ```
 
-> Please change `your-secure-key-here` to a strong password (never use the default value), then you can log in to the management interface: <http://localhost:3001>
-
-> The stable Docker tag for the v1 maintenance line is `1`. v1 releases no longer update `latest`; after the transition period, `latest` may move to v2. Existing v1 deployments should pin the image to `:1`.
+> Replace `your-secure-key-here` with a strong, random key before deployment.
 
 ### Method 2: Using Docker Compose (Recommended)
 
-**Installation Commands:**
-
 ```bash
-# Create Directory
-mkdir -p gpt-load && cd gpt-load
+# Create configuration from the template in this source checkout
+cp .env.example .env
 
-# Download configuration files
-wget https://raw.githubusercontent.com/tbphp/gpt-load/refs/heads/v1/docker-compose.yml
-wget -O .env https://raw.githubusercontent.com/tbphp/gpt-load/refs/heads/v1/.env.example
+# Edit .env and set AUTH_KEY to a strong, random key.
+# Never use default or simple keys such as sk-123456.
 
-# Edit the .env file and change AUTH_KEY to a strong password. Never use default or simple keys like sk-123456.
-
-# Start services
-docker compose up -d
+# Build from local source and start the service
+docker compose up -d --build
 ```
 
-Before deployment, you must change the default admin key (AUTH_KEY). A recommended format is: sk-prod-[32-character random string].
-
-The default installation uses the SQLite version, which is suitable for lightweight, single-instance applications.
-
-If you need to install MySQL, PostgreSQL, and Redis, please uncomment the required services in the `docker-compose.yml` file, configure the corresponding environment variables, and restart.
+SQLite is used by default. To use PostgreSQL, uncomment the PostgreSQL service and its `depends_on` entry in `docker-compose.yml`, set `DATABASE_DSN` in `.env`, and use a strong database password. This still supports only one application instance.
 
 **Other Commands:**
 
@@ -114,36 +108,30 @@ docker compose ps
 # View logs
 docker compose logs -f
 
-# Restart Service
+# Restart the service
 docker compose down && docker compose up -d
 
-# Update to the latest v1 version
-docker compose pull && docker compose down && docker compose up -d
+# Rebuild and deploy after updating your local Lite source
+docker compose up -d --build
 ```
 
 After deployment:
 
-- Access Web Management Interface: <http://localhost:3001>
+- Web Management Interface: <http://localhost:3001>
 - API Proxy Address: <http://localhost:3001/proxy>
 
-> Use your modified AUTH_KEY to log in to the management interface.
+> Use your configured `AUTH_KEY` to log in to the management interface.
 
 ### Method 3: Source Build
 
-Source build requires a locally installed database (SQLite, MySQL, or PostgreSQL) and Redis (optional).
+Use Go 1.25+ from your local Lite source checkout. SQLite requires no separate database server; PostgreSQL requires an accessible PostgreSQL server.
 
 ```bash
-# Clone and build
-git clone https://github.com/tbphp/gpt-load.git
-cd gpt-load
-go mod tidy
-
 # Create configuration
 cp .env.example .env
 
-# Edit the .env file and change AUTH_KEY to a strong password. Never use default or simple keys like sk-123456.
-# Modify DATABASE_DSN and REDIS_DSN configurations in .env
-# REDIS_DSN is optional; if not configured, memory storage will be enabled
+# Edit .env and set AUTH_KEY to a strong, random key.
+# Leave DATABASE_DSN empty for SQLite, or set a PostgreSQL DSN.
 
 # Run
 make run
@@ -151,21 +139,10 @@ make run
 
 After deployment:
 
-- Access Web Management Interface: <http://localhost:3001>
+- Web Management Interface: <http://localhost:3001>
 - API Proxy Address: <http://localhost:3001/proxy>
 
-> Use your modified AUTH_KEY to log in to the management interface.
-
-### Method 4: Cluster Deployment
-
-Cluster deployment requires all nodes to connect to the same MySQL (or PostgreSQL) and Redis, with Redis being mandatory. It's recommended to use unified distributed MySQL and Redis clusters.
-
-**Deployment Requirements:**
-
-- All nodes must configure identical `AUTH_KEY`, `DATABASE_DSN`, `REDIS_DSN`
-- Leader-follower architecture where follower nodes must configure environment variable: `IS_SLAVE=true`
-
-For details, please refer to [Cluster Deployment Documentation](https://www.gpt-load.com/docs/cluster?lang=en)
+> Use your configured `AUTH_KEY` to log in to the management interface.
 
 ## Configuration System
 
@@ -199,7 +176,6 @@ GPT-Load adopts a dual-layer configuration architecture:
 | Write Timeout             | `SERVER_WRITE_TIMEOUT`             | 600             | HTTP server write timeout (seconds)             |
 | Idle Timeout              | `SERVER_IDLE_TIMEOUT`              | 120             | HTTP connection idle timeout (seconds)          |
 | Graceful Shutdown Timeout | `SERVER_GRACEFUL_SHUTDOWN_TIMEOUT` | 10              | Service graceful shutdown wait time (seconds)   |
-| Follower Mode             | `IS_SLAVE`                         | false           | Follower node identifier for cluster deployment |
 | Timezone                  | `TZ`                               | `Asia/Shanghai` | Specify timezone                                |
 
 **Security Configuration:**
@@ -214,7 +190,6 @@ GPT-Load adopts a dual-layer configuration architecture:
 | Setting             | Environment Variable | Default              | Description                                             |
 | ------------------- | -------------------- | -------------------- | ------------------------------------------------------- |
 | Database Connection | `DATABASE_DSN`       | `./data/gpt-load.db` | Database connection string (DSN) or file path           |
-| Redis Connection    | `REDIS_DSN`          | -                    | Redis connection string, uses memory storage when empty |
 
 **Performance & CORS Configuration:**
 
@@ -308,8 +283,8 @@ GPT-Load supports encrypted storage of API keys. You can enable, disable, or cha
 #### Docker Compose Deployment
 
 ```bash
-# 1. Update the image (ensure you are using the latest v1 version)
-docker compose pull
+# 1. Build the image from your local Lite source
+docker compose build
 
 # 2. Stop the service
 docker compose down

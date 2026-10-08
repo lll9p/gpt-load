@@ -152,7 +152,7 @@ func ProxyAuth(gm *services.GroupManager) gin.HandlerFunc {
 
 		group, err := gm.GetGroupByName(c.Param("group_name"))
 		if err != nil {
-			response.Error(c, app_errors.NewAPIError(app_errors.ErrInternalServer, "Failed to retrieve proxy group"))
+			response.Error(c, app_errors.ErrResourceNotFound)
 			c.Abort()
 			return
 		}

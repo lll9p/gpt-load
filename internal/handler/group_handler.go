@@ -16,7 +16,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
-	"gorm.io/datatypes"
 )
 
 func (s *Server) handleGroupError(c *gin.Context, err error) bool {
@@ -96,7 +95,11 @@ func (s *Server) CreateGroup(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, s.newGroupResponse(group))
+	groupResponse, err := s.newGroupResponse(group)
+	if s.handleGroupError(c, err) {
+		return
+	}
+	response.Success(c, groupResponse)
 }
 
 // ListGroups handles listing all groups.
@@ -108,7 +111,11 @@ func (s *Server) ListGroups(c *gin.Context) {
 
 	groupResponses := make([]GroupResponse, 0, len(groups))
 	for i := range groups {
-		groupResponses = append(groupResponses, *s.newGroupResponse(&groups[i]))
+		groupResponse, err := s.newGroupResponse(&groups[i])
+		if s.handleGroupError(c, err) {
+			return
+		}
+		groupResponses = append(groupResponses, *groupResponse)
 	}
 
 	response.Success(c, groupResponses)
@@ -214,7 +221,11 @@ func (s *Server) UpdateGroup(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, s.newGroupResponse(group))
+	groupResponse, err := s.newGroupResponse(group)
+	if s.handleGroupError(c, err) {
+		return
+	}
+	response.Success(c, groupResponse)
 }
 
 // ReorderGroups handles batch reorder updates for groups.
@@ -252,15 +263,15 @@ type GroupResponse struct {
 	DisplayName         string              `json:"display_name"`
 	Description         string              `json:"description"`
 	GroupType           string              `json:"group_type"`
-	Upstreams           datatypes.JSON      `json:"upstreams"`
+	Upstreams           json.RawMessage     `json:"upstreams"`
 	ChannelType         string              `json:"channel_type"`
 	Sort                int                 `json:"sort"`
 	TestModel           string              `json:"test_model"`
 	ValidationEndpoint  string              `json:"validation_endpoint"`
-	ParamOverrides      datatypes.JSONMap   `json:"param_overrides"`
-	ModelRedirectRules  datatypes.JSONMap   `json:"model_redirect_rules"`
+	ParamOverrides      map[string]any      `json:"param_overrides"`
+	ModelRedirectRules  map[string]any      `json:"model_redirect_rules"`
 	ModelRedirectStrict bool                `json:"model_redirect_strict"`
-	Config              datatypes.JSONMap   `json:"config"`
+	Config              map[string]any      `json:"config"`
 	HeaderRules         []models.HeaderRule `json:"header_rules"`
 	ProxyKeys           string              `json:"proxy_keys"`
 	LastValidatedAt     *time.Time          `json:"last_validated_at"`
@@ -269,23 +280,23 @@ type GroupResponse struct {
 }
 
 // newGroupResponse creates a new GroupResponse from a models.Group.
-func (s *Server) newGroupResponse(group *models.Group) *GroupResponse {
+func (s *Server) newGroupResponse(group *models.Group) (*GroupResponse, error) {
 	appURL := s.SettingsManager.GetAppUrl()
 	endpoint := ""
 	if appURL != "" {
 		u, err := url.Parse(appURL)
-		if err == nil {
-			u.Path = strings.TrimRight(u.Path, "/") + "/proxy/" + group.Name
-			endpoint = u.String()
+		if err != nil {
+			return nil, err
 		}
+		u.Path = strings.TrimRight(u.Path, "/") + "/proxy/" + group.Name
+		endpoint = u.String()
 	}
 
 	// Parse header rules from JSON
 	var headerRules []models.HeaderRule
 	if len(group.HeaderRules) > 0 {
 		if err := json.Unmarshal(group.HeaderRules, &headerRules); err != nil {
-			logrus.WithError(err).Error("Failed to unmarshal header rules")
-			headerRules = make([]models.HeaderRule, 0)
+			return nil, err
 		}
 	}
 
@@ -296,21 +307,21 @@ func (s *Server) newGroupResponse(group *models.Group) *GroupResponse {
 		DisplayName:         group.DisplayName,
 		Description:         group.Description,
 		GroupType:           group.GroupType,
-		Upstreams:           group.Upstreams,
+		Upstreams:           json.RawMessage(group.Upstreams),
 		ChannelType:         group.ChannelType,
 		Sort:                group.Sort,
 		TestModel:           group.TestModel,
 		ValidationEndpoint:  group.ValidationEndpoint,
-		ParamOverrides:      group.ParamOverrides,
-		ModelRedirectRules:  group.ModelRedirectRules,
+		ParamOverrides:      map[string]any(group.ParamOverrides),
+		ModelRedirectRules:  map[string]any(group.ModelRedirectRules),
 		ModelRedirectStrict: group.ModelRedirectStrict,
-		Config:              group.Config,
+		Config:              map[string]any(group.Config),
 		HeaderRules:         headerRules,
 		ProxyKeys:           group.ProxyKeys,
 		LastValidatedAt:     group.LastValidatedAt,
 		CreatedAt:           group.CreatedAt,
 		UpdatedAt:           group.UpdatedAt,
-	}
+	}, nil
 }
 
 // DeleteGroup handles deleting a group.
@@ -410,7 +421,10 @@ func (s *Server) CopyGroup(c *gin.Context) {
 		return
 	}
 
-	groupResponse := s.newGroupResponse(newGroup)
+	groupResponse, err := s.newGroupResponse(newGroup)
+	if s.handleGroupError(c, err) {
+		return
+	}
 	copyResponse := &GroupCopyResponse{
 		Group: groupResponse,
 	}
@@ -446,7 +460,7 @@ func (s *Server) GetSubGroups(c *gin.Context) {
 		return
 	}
 
-	subGroups, err := s.AggregateGroupService.GetSubGroups(c.Request.Context(), uint(id))
+	subGroups, err := s.GroupService.GetSubGroups(c.Request.Context(), uint(id))
 	if s.handleGroupError(c, err) {
 		return
 	}
@@ -468,7 +482,7 @@ func (s *Server) AddSubGroups(c *gin.Context) {
 		return
 	}
 
-	if err := s.AggregateGroupService.AddSubGroups(c.Request.Context(), uint(id), req.SubGroups); s.handleGroupError(c, err) {
+	if err := s.GroupService.AddSubGroups(c.Request.Context(), uint(id), req.SubGroups); s.handleGroupError(c, err) {
 		return
 	}
 
@@ -495,7 +509,7 @@ func (s *Server) UpdateSubGroupWeight(c *gin.Context) {
 		return
 	}
 
-	if err := s.AggregateGroupService.UpdateSubGroupWeight(c.Request.Context(), uint(id), uint(subGroupID), req.Weight); s.handleGroupError(c, err) {
+	if err := s.GroupService.UpdateSubGroupWeight(c.Request.Context(), uint(id), uint(subGroupID), req.Weight); s.handleGroupError(c, err) {
 		return
 	}
 
@@ -516,7 +530,7 @@ func (s *Server) DeleteSubGroup(c *gin.Context) {
 		return
 	}
 
-	if err := s.AggregateGroupService.DeleteSubGroup(c.Request.Context(), uint(id), uint(subGroupID)); s.handleGroupError(c, err) {
+	if err := s.GroupService.DeleteSubGroup(c.Request.Context(), uint(id), uint(subGroupID)); s.handleGroupError(c, err) {
 		return
 	}
 
@@ -531,7 +545,7 @@ func (s *Server) GetParentAggregateGroups(c *gin.Context) {
 		return
 	}
 
-	parentGroups, err := s.AggregateGroupService.GetParentAggregateGroups(c.Request.Context(), uint(id))
+	parentGroups, err := s.GroupService.GetParentAggregateGroups(c.Request.Context(), uint(id))
 	if s.handleGroupError(c, err) {
 		return
 	}

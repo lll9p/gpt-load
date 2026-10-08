@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"go.uber.org/dig"
 	"gorm.io/gorm"
 )
 
@@ -31,7 +30,6 @@ type KeyValidator struct {
 }
 
 type KeyValidatorParams struct {
-	dig.In
 	DB              *gorm.DB
 	ChannelFactory  *channel.Factory
 	SettingsManager *config.SystemSettingsManager
@@ -52,8 +50,14 @@ func NewKeyValidator(params KeyValidatorParams) *KeyValidator {
 
 // ValidateSingleKey performs a validation check on a single API key.
 func (s *KeyValidator) ValidateSingleKey(key *models.APIKey, group *models.Group) (bool, error) {
+	groupCopy := *group
+	group = &groupCopy
 	if group.EffectiveConfig.AppUrl == "" {
-		group.EffectiveConfig = s.SettingsManager.GetEffectiveConfig(group.Config)
+		effectiveConfig, err := s.SettingsManager.GetEffectiveConfig(group.Config)
+		if err != nil {
+			return false, fmt.Errorf("invalid config for group %s: %w", group.Name, err)
+		}
+		group.EffectiveConfig = effectiveConfig
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(group.EffectiveConfig.KeyValidationTimeoutSeconds)*time.Second)
 	defer cancel()

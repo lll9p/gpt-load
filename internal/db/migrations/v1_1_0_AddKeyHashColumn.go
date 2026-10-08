@@ -13,9 +13,11 @@ import (
 func V1_1_0_AddKeyHashColumn(db *gorm.DB) error {
 	// First check if there are any records need migration
 	var needMigrateCount int64
-	db.Model(&models.APIKey{}).
+	if err := db.Model(&models.APIKey{}).
 		Where("key_hash IS NULL OR key_hash = ''").
-		Count(&needMigrateCount)
+		Count(&needMigrateCount).Error; err != nil {
+		return fmt.Errorf("failed to count keys requiring migration: %w", err)
+	}
 
 	if needMigrateCount == 0 {
 		logrus.Info("No api_keys need migration, skipping v1.1.0...")
@@ -56,7 +58,7 @@ func V1_1_0_AddKeyHashColumn(db *gorm.DB) error {
 			if err := db.Model(&models.APIKey{}).
 				Where("id = ?", key.ID).
 				Update("key_hash", keyHash).Error; err != nil {
-				logrus.WithError(err).Errorf("Failed to update key_hash for api_key ID %d", key.ID)
+				return fmt.Errorf("failed to update key_hash for api_key ID %d: %w", key.ID, err)
 			}
 		}
 	}

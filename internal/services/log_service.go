@@ -1,12 +1,15 @@
 package services
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
+	"gpt-load/internal/config"
 	"gpt-load/internal/encryption"
 	"gpt-load/internal/models"
 	"io"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -23,15 +26,30 @@ type ExportableLogKey struct {
 
 // LogService provides services related to request logs.
 type LogService struct {
-	DB            *gorm.DB
-	EncryptionSvc encryption.Service
+	DB              *gorm.DB
+	EncryptionSvc   encryption.Service
+	settingsManager *config.SystemSettingsManager
+	pending         []*models.RequestLog
+	pendingMu       sync.Mutex
+	flushMu         sync.Mutex
+	lifecycleMu     sync.Mutex
+	stopping        bool
+	recordsWG       sync.WaitGroup
+	runCtx          context.Context
+	cancel          context.CancelFunc
+	done            chan struct{}
 }
 
 // NewLogService creates a new LogService.
-func NewLogService(db *gorm.DB, encryptionSvc encryption.Service) *LogService {
+func NewLogService(db *gorm.DB, settingsManager *config.SystemSettingsManager, encryptionSvc encryption.Service) *LogService {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &LogService{
-		DB:            db,
-		EncryptionSvc: encryptionSvc,
+		DB:              db,
+		EncryptionSvc:   encryptionSvc,
+		settingsManager: settingsManager,
+		runCtx:          ctx,
+		cancel:          cancel,
+		done:            make(chan struct{}),
 	}
 }
 
@@ -105,7 +123,7 @@ func (s *LogService) StreamLogKeysToCSV(c *gin.Context, writer io.Writer) error 
 
 	baseQuery := s.DB.Model(&models.RequestLog{}).Scopes(s.logFiltersScope(c)).Where("key_hash IS NOT NULL AND key_hash != ''")
 
-	// 使用窗口函数获取每个key_hash的最新记录（避免同一密钥因多次加密产生重复）
+	// Select the latest record per key hash, regardless of encryption randomness.
 	err := s.DB.Raw(`
 		SELECT
 			key_value,
@@ -128,13 +146,12 @@ func (s *LogService) StreamLogKeysToCSV(c *gin.Context, writer io.Writer) error 
 		return fmt.Errorf("failed to fetch log keys: %w", err)
 	}
 
-	// 解密并写入CSV数据
+	// Decrypt keys for CSV export.
 	for _, record := range results {
-		// 解密密钥用于CSV导出
 		decryptedKey := record.KeyValue
 		if record.KeyValue != "" {
 			if decrypted, err := s.EncryptionSvc.Decrypt(record.KeyValue); err != nil {
-				logrus.WithError(err).WithField("key_value", record.KeyValue).Error("Failed to decrypt key for CSV export")
+				logrus.WithError(err).Error("Failed to decrypt key for CSV export")
 				decryptedKey = "failed-to-decrypt"
 			} else {
 				decryptedKey = decrypted

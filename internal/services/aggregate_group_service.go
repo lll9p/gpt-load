@@ -8,7 +8,6 @@ import (
 	"gpt-load/internal/models"
 	"gpt-load/internal/utils"
 
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -24,22 +23,8 @@ type AggregateValidationResult struct {
 	SubGroups          []models.GroupSubGroup
 }
 
-// AggregateGroupService encapsulates aggregate group specific behaviours.
-type AggregateGroupService struct {
-	db           *gorm.DB
-	groupManager *GroupManager
-}
-
-// NewAggregateGroupService constructs an AggregateGroupService instance.
-func NewAggregateGroupService(db *gorm.DB, groupManager *GroupManager) *AggregateGroupService {
-	return &AggregateGroupService{
-		db:           db,
-		groupManager: groupManager,
-	}
-}
-
 // ValidateSubGroups validates sub-groups with an optional existing validation endpoint for consistency check.
-func (s *AggregateGroupService) ValidateSubGroups(ctx context.Context, channelType string, inputs []SubGroupInput, existingEndpoint string) (*AggregateValidationResult, error) {
+func (s *GroupService) ValidateSubGroups(ctx context.Context, channelType string, inputs []SubGroupInput, existingEndpoint string) (*AggregateValidationResult, error) {
 	if len(inputs) == 0 {
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_groups_required", nil)
 	}
@@ -110,7 +95,7 @@ func (s *AggregateGroupService) ValidateSubGroups(ctx context.Context, channelTy
 }
 
 // GetSubGroups returns sub groups for an aggregate group with complete information
-func (s *AggregateGroupService) GetSubGroups(ctx context.Context, groupID uint) ([]models.SubGroupInfo, error) {
+func (s *GroupService) GetSubGroups(ctx context.Context, groupID uint) ([]models.SubGroupInfo, error) {
 	var group models.Group
 	if err := s.db.WithContext(ctx).First(&group, groupID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -152,9 +137,7 @@ func (s *AggregateGroupService) GetSubGroups(ctx context.Context, groupID uint) 
 		stats := keyStatsMap[subGroup.ID]
 
 		if stats.Err != nil {
-			logrus.WithContext(ctx).WithError(stats.Err).
-				WithField("group_id", subGroup.ID).
-				Warn("failed to fetch key stats for sub-group, using zero values")
+			return nil, app_errors.ParseDBError(stats.Err)
 		}
 
 		subGroups = append(subGroups, models.SubGroupInfo{
@@ -170,7 +153,7 @@ func (s *AggregateGroupService) GetSubGroups(ctx context.Context, groupID uint) 
 }
 
 // AddSubGroups adds new sub groups to an aggregate group
-func (s *AggregateGroupService) AddSubGroups(ctx context.Context, groupID uint, inputs []SubGroupInput) error {
+func (s *GroupService) AddSubGroups(ctx context.Context, groupID uint, inputs []SubGroupInput) error {
 	var group models.Group
 	if err := s.db.WithContext(ctx).First(&group, groupID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -192,9 +175,10 @@ func (s *AggregateGroupService) AddSubGroups(ctx context.Context, groupID uint, 
 
 	if len(existingSubGroups) > 0 {
 		var existingGroup models.Group
-		if err := s.db.WithContext(ctx).First(&existingGroup, existingSubGroups[0].SubGroupID).Error; err == nil {
-			existingEndpoint = utils.GetValidationEndpoint(&existingGroup)
+		if err := s.db.WithContext(ctx).First(&existingGroup, existingSubGroups[0].SubGroupID).Error; err != nil {
+			return app_errors.ParseDBError(err)
 		}
+		existingEndpoint = utils.GetValidationEndpoint(&existingGroup)
 	}
 
 	// Validate sub groups with existing endpoint for consistency
@@ -232,16 +216,16 @@ func (s *AggregateGroupService) AddSubGroups(ctx context.Context, groupID uint, 
 		return err
 	}
 
-	// 触发缓存更新
-	if err := s.groupManager.Invalidate(); err != nil {
-		logrus.WithContext(ctx).WithError(err).Error("failed to invalidate group cache after adding sub groups")
+	// Reload the group snapshot.
+	if err := s.groupManager.Reload(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
 // UpdateSubGroupWeight updates the weight of a specific sub group
-func (s *AggregateGroupService) UpdateSubGroupWeight(ctx context.Context, groupID, subGroupID uint, weight int) error {
+func (s *GroupService) UpdateSubGroupWeight(ctx context.Context, groupID, subGroupID uint, weight int) error {
 	var group models.Group
 	if err := s.db.WithContext(ctx).First(&group, groupID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -284,16 +268,16 @@ func (s *AggregateGroupService) UpdateSubGroupWeight(ctx context.Context, groupI
 		return NewI18nError(app_errors.ErrResourceNotFound, "group.sub_group_not_found", nil)
 	}
 
-	// 触发缓存更新
-	if err := s.groupManager.Invalidate(); err != nil {
-		logrus.WithContext(ctx).WithError(err).Error("failed to invalidate group cache after updating sub group weight")
+	// Reload the group snapshot.
+	if err := s.groupManager.Reload(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
 // DeleteSubGroup removes a sub group from an aggregate group
-func (s *AggregateGroupService) DeleteSubGroup(ctx context.Context, groupID, subGroupID uint) error {
+func (s *GroupService) DeleteSubGroup(ctx context.Context, groupID, subGroupID uint) error {
 	var group models.Group
 	if err := s.db.WithContext(ctx).First(&group, groupID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -318,18 +302,18 @@ func (s *AggregateGroupService) DeleteSubGroup(ctx context.Context, groupID, sub
 		return NewI18nError(app_errors.ErrResourceNotFound, "group.sub_group_not_found", nil)
 	}
 
-	// 触发缓存更新
-	if err := s.groupManager.Invalidate(); err != nil {
-		logrus.WithContext(ctx).WithError(err).Error("failed to invalidate group cache after deleting sub group")
+	// Reload the group snapshot.
+	if err := s.groupManager.Reload(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
 // CountAggregateGroupsUsingSubGroup returns the number of aggregate groups that use the specified group as a sub-group
-func (s *AggregateGroupService) CountAggregateGroupsUsingSubGroup(ctx context.Context, subGroupID uint) (int64, error) {
+func (s *GroupService) CountAggregateGroupsUsingSubGroup(db *gorm.DB, subGroupID uint) (int64, error) {
 	var count int64
-	err := s.db.WithContext(ctx).
+	err := db.
 		Model(&models.GroupSubGroup{}).
 		Where("sub_group_id = ?", subGroupID).
 		Count(&count).Error
@@ -342,7 +326,7 @@ func (s *AggregateGroupService) CountAggregateGroupsUsingSubGroup(ctx context.Co
 }
 
 // GetParentAggregateGroups returns the aggregate groups that use the specified group as a sub-group
-func (s *AggregateGroupService) GetParentAggregateGroups(ctx context.Context, subGroupID uint) ([]models.ParentAggregateGroupInfo, error) {
+func (s *GroupService) GetParentAggregateGroups(ctx context.Context, subGroupID uint) ([]models.ParentAggregateGroupInfo, error) {
 	var groupSubGroups []models.GroupSubGroup
 	if err := s.db.WithContext(ctx).Where("sub_group_id = ?", subGroupID).Find(&groupSubGroups).Error; err != nil {
 		return nil, app_errors.ParseDBError(err)
@@ -388,7 +372,7 @@ type keyStatsResult struct {
 }
 
 // fetchSubGroupsKeyStats batch fetches key statistics for multiple sub-groups concurrently
-func (s *AggregateGroupService) fetchSubGroupsKeyStats(ctx context.Context, groupIDs []uint) map[uint]keyStatsResult {
+func (s *GroupService) fetchSubGroupsKeyStats(ctx context.Context, groupIDs []uint) map[uint]keyStatsResult {
 	results := make(map[uint]keyStatsResult)
 	var mu sync.Mutex
 	var wg sync.WaitGroup

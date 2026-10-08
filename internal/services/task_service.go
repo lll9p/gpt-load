@@ -1,17 +1,13 @@
 package services
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
-	"fmt"
-	"gpt-load/internal/store"
+	"sync"
 	"time"
 )
 
-const (
-	globalTaskKey = "global_task"
-	ResultTTL     = 60 * time.Minute
-)
+const ResultTTL = time.Hour
 
 const (
 	TaskTypeKeyValidation = "KEY_VALIDATION"
@@ -33,114 +29,96 @@ type TaskStatus struct {
 	DurationSeconds float64    `json:"duration_seconds,omitempty"`
 }
 
-// TaskService manages the state of a single, global, long-running task using the store interface.
-type TaskService struct {
-	store store.Store
+type taskState struct {
+	mu      sync.Mutex
+	status  TaskStatus
+	stopped bool
+	wg      sync.WaitGroup
 }
 
-// NewTaskService creates a new TaskService.
-func NewTaskService(store store.Store) *TaskService {
-	return &TaskService{
-		store: store,
+func (s *KeyService) reserveTask(taskType, groupName string, total int) (*TaskStatus, error) {
+	s.tasks.mu.Lock()
+	defer s.tasks.mu.Unlock()
+	if s.tasks.stopped {
+		return nil, errors.New("key service is stopping")
 	}
-}
-
-// StartTask attempts to start a new task. It returns an error if a task is already running.
-func (s *TaskService) StartTask(taskType, groupName string, total int) (*TaskStatus, error) {
-	currentStatus, err := s.GetTaskStatus()
-	if err != nil {
-		return nil, fmt.Errorf("failed to check current task status before starting a new one: %w", err)
-	}
-
-	if currentStatus.IsRunning {
+	if s.tasks.status.IsRunning {
 		return nil, errors.New("a task is already running, please wait")
 	}
-
-	status := &TaskStatus{
-		TaskType:  taskType,
-		IsRunning: true,
-		GroupName: groupName,
-		Total:     total,
-		Processed: 0,
-		StartedAt: time.Now(),
+	s.tasks.status = TaskStatus{
+		TaskType: taskType, IsRunning: true, GroupName: groupName,
+		Total: total, StartedAt: time.Now(),
 	}
-	statusBytes, err := json.Marshal(status)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize new task status: %w", err)
-	}
-
-	if err := s.store.Set(globalTaskKey, statusBytes, ResultTTL); err != nil {
-		return nil, fmt.Errorf("failed to set initial task status: %w", err)
-	}
-
-	return status, nil
-}
-
-// GetTaskStatus returns the current status of the task.
-func (s *TaskService) GetTaskStatus() (*TaskStatus, error) {
-	statusBytes, err := s.store.Get(globalTaskKey)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return &TaskStatus{IsRunning: false}, nil
-		}
-		return nil, fmt.Errorf("failed to get task status: %w", err)
-	}
-
-	var status TaskStatus
-	if err := json.Unmarshal(statusBytes, &status); err != nil {
-		return nil, fmt.Errorf("failed to deserialize task status: %w", err)
-	}
-
-	if !status.IsRunning && status.FinishedAt != nil {
-		status.DurationSeconds = status.FinishedAt.Sub(status.StartedAt).Seconds()
-	}
-
+	status := s.tasks.status
+	s.tasks.wg.Add(1)
 	return &status, nil
 }
 
-// UpdateProgress updates the progress of the current task.
-func (s *TaskService) UpdateProgress(processed int) error {
-	status, err := s.GetTaskStatus()
+func (s *KeyService) startTask(taskType, groupName string, total int, run func()) (*TaskStatus, error) {
+	status, err := s.reserveTask(taskType, groupName, total)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !status.IsRunning {
-		return nil
-	}
-
-	status.Processed = processed
-	statusBytes, err := json.Marshal(status)
-	if err != nil {
-		return fmt.Errorf("failed to serialize updated status: %w", err)
-	}
-
-	return s.store.Set(globalTaskKey, statusBytes, ResultTTL)
+	go func() {
+		defer s.tasks.wg.Done()
+		run()
+	}()
+	return status, nil
 }
 
-// EndTask marks the current task as finished and stores its final result.
-func (s *TaskService) EndTask(resultData any, taskErr error) error {
-	status, err := s.GetTaskStatus()
-	if err != nil {
-		return fmt.Errorf("failed to get task object to end task: %w", err)
+// GetTaskStatus returns a snapshot; only completed tasks expire.
+func (s *KeyService) GetTaskStatus() (*TaskStatus, error) {
+	s.tasks.mu.Lock()
+	defer s.tasks.mu.Unlock()
+	status := s.tasks.status
+	if !status.IsRunning && status.FinishedAt != nil {
+		if time.Since(*status.FinishedAt) >= ResultTTL {
+			s.tasks.status = TaskStatus{}
+			return &TaskStatus{}, nil
+		}
+		finishedAt := *status.FinishedAt
+		status.FinishedAt = &finishedAt
 	}
-	if !status.IsRunning {
-		return nil
-	}
+	return &status, nil
+}
 
+func (s *KeyService) updateProgress(processed int) {
+	s.tasks.mu.Lock()
+	defer s.tasks.mu.Unlock()
+	if s.tasks.status.IsRunning {
+		s.tasks.status.Processed = processed
+	}
+}
+
+func (s *KeyService) endTask(result any, taskErr error) {
+	s.tasks.mu.Lock()
+	defer s.tasks.mu.Unlock()
 	now := time.Now()
+	status := &s.tasks.status
 	status.IsRunning = false
 	status.FinishedAt = &now
 	status.DurationSeconds = now.Sub(status.StartedAt).Seconds()
 	if taskErr != nil {
 		status.Error = taskErr.Error()
 	} else {
-		status.Result = resultData
+		status.Result = result
 	}
+}
 
-	updatedTaskBytes, err := json.Marshal(status)
-	if err != nil {
-		return fmt.Errorf("failed to serialize final task status: %w", err)
+// Stop rejects new tasks and waits for started tasks. Do not close the DB on timeout.
+func (s *KeyService) Stop(ctx context.Context) error {
+	s.tasks.mu.Lock()
+	s.tasks.stopped = true
+	s.tasks.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		s.tasks.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-
-	return s.store.Set(globalTaskKey, updatedTaskBytes, ResultTTL)
 }

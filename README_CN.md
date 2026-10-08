@@ -1,14 +1,14 @@
-# GPT-Load
+# GPT-Load Lite
 
 [English](README.md) | 中文 | [日本語](README_JP.md)
 
-[![Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
-![Go Version](https://img.shields.io/badge/Go-1.24+-blue.svg)
+[![Upstream Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
+![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-一个高性能、企业级的 AI 接口透明代理服务，专门为需要集成多种 AI 服务的企业和开发者设计。采用 Go 语言开发，具备智能密钥管理、负载均衡和完善的监控功能，专为高并发生产环境而设计。
+GPT-Load Lite 是 GPT-Load 的单实例精简版，使用 Go 开发，保留 AI 接口透明代理、智能密钥管理、上游负载均衡、监控、动态配置、认证和 API 密钥加密功能。
 
-详细请访问[官方网站](https://www.gpt-load.com/v1)
+原项目的信息请参阅[上游官方网站](https://www.gpt-load.com/v1)，其中的部署说明不适用于 Lite。
 
 <a href="https://trendshift.io/repositories/14880" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14880" alt="tbphp%2Fgpt-load | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 <a href="https://hellogithub.com/repository/tbphp/gpt-load" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=554dc4c46eb14092b9b0c56f1eb9021c&claim_uid=Qlh8vzrWJ0HCneG" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
@@ -43,7 +43,6 @@
 - **负载均衡**: 支持多上游端点的加权负载均衡，提升服务可用性
 - **智能故障处理**: 自动密钥黑名单管理和恢复机制，确保服务连续性
 - **动态配置**: 系统设置和分组配置支持热重载，无需重启即可生效
-- **企业级架构**: 分布式主从部署，支持水平扩展和高可用
 - **现代化管理**: 基于 Vue 3 的 Web 管理界面，直观易用
 - **全面监控**: 实时统计、健康检查、详细请求日志
 - **高性能设计**: 零拷贝流式传输、连接池复用、原子操作
@@ -62,110 +61,88 @@ GPT-Load 作为透明代理服务，完整保留各 AI 服务商的原生 API �
 
 ### 环境要求
 
-- Go 1.24+ (源码构建)
-- Docker (容器化部署)
-- MySQL, PostgreSQL, 或 SQLite (数据库存储)
-- Redis (缓存和分布式协调，可选)
+- Go 1.25+（源码构建）
+- Docker（容器化部署）
+- SQLite（默认，无需独立数据库服务）或 PostgreSQL
+
+**仅支持单实例：** GPT-Load Lite 不支持多个应用实例共享状态，即使使用 PostgreSQL 也不支持。待批量写入的日志和任务状态保存在内存中，不跨重启保留；异常退出可能丢失尚未落库的日志。
+
+以下命令均在本地 GPT-Load Lite 源码根目录执行。请从当前源码构建；上游 GPT-Load 镜像和部署文件运行的是未精简版本，不是 Lite。
 
 ### 方式一：Docker 快速开始
 
 ```bash
+# Build the local source image
+docker build -t gpt-load-lite:local .
+
 docker run -d --name gpt-load \
     -p 3001:3001 \
     -e AUTH_KEY=your-secure-key-here \
     -v "$(pwd)/data":/app/data \
-    ghcr.io/tbphp/gpt-load:1
+    gpt-load-lite:local
 ```
 
-> 请将 `your-secure-key-here` 改为强密码（决不能使用默认值），即可登录管理界面：<http://localhost:3001>
-
-> v1 维护线的稳定 Docker 标签为 `1`。v1 发布不再更新 `latest`；过渡期结束后，`latest` 可能切换至 v2。现有 v1 部署请将镜像固定为 `:1`。
+> 部署前请将 `your-secure-key-here` 改为强随机密钥。
 
 ### 方式二：使用 Docker Compose（推荐）
 
-**安装命令：**
-
 ```bash
-# 创建目录
-mkdir -p gpt-load && cd gpt-load
+# Create configuration from the template in this source checkout
+cp .env.example .env
 
-# 下载配置文件
-wget https://raw.githubusercontent.com/tbphp/gpt-load/refs/heads/v1/docker-compose.yml
-wget -O .env https://raw.githubusercontent.com/tbphp/gpt-load/refs/heads/v1/.env.example
+# Edit .env and set AUTH_KEY to a strong, random key.
+# Never use default or simple keys such as sk-123456.
 
-# 编辑 .env 文件，修改AUTH_KEY为强密码，绝不使用 sk-123456 等默认或者简单密钥
-
-# 启动服务
-docker compose up -d
+# Build from local source and start the service
+docker compose up -d --build
 ```
 
-在部署之前，您必须修改默认的管理密钥 (AUTH_KEY)，建议密钥格式：sk-prod-[随机字符串32位]。
-
-默认安装的是 SQLite 版本，适合轻量单机应用。
-
-如需安装 MySQL, PostgreSQL 及 Redis，请在 `docker-compose.yml` 文件中取消所需服务的注释，并配置好对应的环境配置重启即可。
+默认使用 SQLite。如需 PostgreSQL，请在 `docker-compose.yml` 中取消 PostgreSQL 服务及其 `depends_on` 项的注释，在 `.env` 中设置 `DATABASE_DSN`，并使用强数据库密码。使用 PostgreSQL 仍然只支持一个应用实例。
 
 **其他命令：**
 
 ```bash
-# 查看服务状态
+# Check service status
 docker compose ps
 
-# 查看日志
+# View logs
 docker compose logs -f
 
-# 重启服务
+# Restart the service
 docker compose down && docker compose up -d
 
-# 更新到最新 v1 版本
-docker compose pull && docker compose down && docker compose up -d
+# Rebuild and deploy after updating your local Lite source
+docker compose up -d --build
 ```
 
 部署完成后：
 
-- 访问 Web 管理界面：<http://localhost:3001>
-- API 代理地址：<http://localhost:3001/proxy>
+- Web 管理界面： <http://localhost:3001>
+- API 代理地址： <http://localhost:3001/proxy>
 
-> 使用你修改的 AUTH_KEY 登录管理端。
+> 使用你配置的 `AUTH_KEY` 登录管理端。
 
 ### 方式三：源码构建
 
-源码构建需要本地已安装数据库（SQLite、MySQL 或 PostgreSQL）和 Redis（可选）。
+在本地 Lite 源码目录中使用 Go 1.25+。SQLite 无需独立数据库服务；使用 PostgreSQL 时需有可连接的 PostgreSQL 服务。
 
 ```bash
-# 克隆并构建
-git clone https://github.com/tbphp/gpt-load.git
-cd gpt-load
-go mod tidy
-
-# 创建配置
+# Create configuration
 cp .env.example .env
 
-# 编辑 .env 文件，修改AUTH_KEY为强密码，绝不使用 sk-123456 等默认或者简单密钥
-# 修改 .env 中 DATABASE_DSN 和 REDIS_DSN 配置
-# REDIS_DSN 为可选，如果不配置则启用内存存储
+# Edit .env and set AUTH_KEY to a strong, random key.
+# Leave DATABASE_DSN empty for SQLite, or set a PostgreSQL DSN.
 
-# 运行
+# Run
 make run
 ```
 
 部署完成后：
 
-- 访问 Web 管理界面：<http://localhost:3001>
-- API 代理地址：<http://localhost:3001/proxy>
+- Web 管理界面： <http://localhost:3001>
+- API 代理地址： <http://localhost:3001/proxy>
 
-> 使用你修改的 AUTH_KEY 登录管理端。
-
-### 方式四：集群部署
-
-集群部署需要所有节点都连接同一个 MySQL（或者 PostgreSQL） 和 Redis，并且 Redis 是必须要求。建议使用统一的分布式 MySQL 和 Redis 集群。
-
-**部署要求：**
-
-- 所有节点必须配置相同的 `AUTH_KEY`、`DATABASE_DSN`、`REDIS_DSN`
-- 一主多从架构，从节点必须配置环境变量：`IS_SLAVE=true`
-
-详细请参考[集群部署文档](https://www.gpt-load.com/docs/cluster?lang=zh)
+> 使用你配置的 `AUTH_KEY` 登录管理端。
 
 ## 配置系统
 
@@ -199,7 +176,6 @@ GPT-Load 采用双层配置架构：
 | 写入超时     | `SERVER_WRITE_TIMEOUT`             | 600             | HTTP 服务器写入超时（秒）  |
 | 空闲超时     | `SERVER_IDLE_TIMEOUT`              | 120             | HTTP 连接空闲超时（秒）    |
 | 优雅关闭超时 | `SERVER_GRACEFUL_SHUTDOWN_TIMEOUT` | 10              | 服务优雅关闭等待时间（秒） |
-| 从节点模式   | `IS_SLAVE`                         | false           | 集群部署时从节点标识       |
 | 时区         | `TZ`                               | `Asia/Shanghai` | 指定时区                   |
 
 **安全配置：**
@@ -214,7 +190,6 @@ GPT-Load 采用双层配置架构：
 | 配置项     | 环境变量       | 默认值             | 说明                                 |
 | ---------- | -------------- | ------------------ | ------------------------------------ |
 | 数据库连接 | `DATABASE_DSN` | ./data/gpt-load.db | 数据库连接字符串 (DSN) 或文件路径    |
-| Redis 连接 | `REDIS_DSN`    | -                  | Redis 连接字符串，为空时使用内存存储 |
 
 **性能与跨域配置：**
 
@@ -308,8 +283,8 @@ GPT-Load 支持对 API 密钥进行加密存储。您可以随时启用、禁用
 #### Docker Compose 部署
 
 ```bash
-# 1. 更新镜像（确保使用最新 v1 版本）
-docker compose pull
+# 1. Build the image from your local Lite source
+docker compose build
 
 # 2. 停止服务
 docker compose down

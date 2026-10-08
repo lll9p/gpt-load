@@ -3,11 +3,11 @@ package commands
 import (
 	"flag"
 	"fmt"
-	"gpt-load/internal/container"
-	db "gpt-load/internal/db/migrations"
+	"gpt-load/internal/config"
+	"gpt-load/internal/db"
+	migrations "gpt-load/internal/db/migrations"
 	"gpt-load/internal/encryption"
 	"gpt-load/internal/models"
-	"gpt-load/internal/store"
 	"gpt-load/internal/types"
 	"gpt-load/internal/utils"
 	"os"
@@ -52,30 +52,37 @@ func RunMigrateKeys(args []string) {
 		os.Exit(0)
 	}
 
-	// Build dependency injection container
-	cont, err := container.BuildContainer()
-	if err != nil {
-		logrus.Fatalf("Failed to build container: %v", err)
-	}
-
-	// Initialize global logger
-	if err := cont.Invoke(func(configManager types.ConfigManager) {
-		utils.SetupLogger(configManager)
-	}); err != nil {
-		logrus.Fatalf("Failed to setup logger: %v", err)
-	}
-
-	// Execute migration command
-	if err := cont.Invoke(func(db *gorm.DB, configManager types.ConfigManager, cacheStore store.Store) {
-		migrateKeysCmd := NewMigrateKeysCommand(db, configManager, cacheStore, *fromKey, *toKey)
-		if err := migrateKeysCmd.Execute(); err != nil {
-			logrus.Fatalf("Key migration failed: %v", err)
-		}
-	}); err != nil {
-		logrus.Fatalf("Failed to execute migration: %v", err)
+	if err := runKeyMigration(*fromKey, *toKey); err != nil {
+		logrus.Fatalf("Key migration failed: %v", err)
 	}
 
 	logrus.Info("Key migration command completed")
+}
+
+func runKeyMigration(fromKey, toKey string) (err error) {
+	configManager, err := config.NewManager()
+	if err != nil {
+		return fmt.Errorf("failed to initialize configuration: %w", err)
+	}
+	utils.SetupLogger(configManager)
+	database, err := db.NewDB(configManager)
+	if err != nil {
+		return err
+	}
+	sqlDB, err := database.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get sql.DB: %w", err)
+	}
+	defer func() {
+		if closeErr := sqlDB.Close(); closeErr != nil {
+			if err == nil {
+				err = fmt.Errorf("failed to close database: %w", closeErr)
+			} else {
+				logrus.WithError(closeErr).Error("Failed to close migration database")
+			}
+		}
+	}()
+	return NewMigrateKeysCommand(database, configManager, fromKey, toKey).Execute()
 }
 
 // Migration batch size configuration
@@ -85,17 +92,15 @@ const migrationBatchSize = 1000
 type MigrateKeysCommand struct {
 	db            *gorm.DB
 	configManager types.ConfigManager
-	cacheStore    store.Store
 	fromKey       string
 	toKey         string
 }
 
 // NewMigrateKeysCommand creates a new migration command
-func NewMigrateKeysCommand(db *gorm.DB, configManager types.ConfigManager, cacheStore store.Store, fromKey, toKey string) *MigrateKeysCommand {
+func NewMigrateKeysCommand(db *gorm.DB, configManager types.ConfigManager, fromKey, toKey string) *MigrateKeysCommand {
 	return &MigrateKeysCommand{
 		db:            db,
 		configManager: configManager,
-		cacheStore:    cacheStore,
 		fromKey:       fromKey,
 		toKey:         toKey,
 	}
@@ -103,7 +108,9 @@ func NewMigrateKeysCommand(db *gorm.DB, configManager types.ConfigManager, cache
 
 // Execute performs the key migration
 func (cmd *MigrateKeysCommand) Execute() error {
-	db.HandleLegacyIndexes(cmd.db)
+	if err := migrations.HandleLegacyIndexes(cmd.db); err != nil {
+		return err
+	}
 	// pre. Database migration and repair
 	if err := cmd.db.AutoMigrate(&models.APIKey{}); err != nil {
 		return fmt.Errorf("database auto-migration failed: %w", err)
@@ -139,12 +146,7 @@ func (cmd *MigrateKeysCommand) Execute() error {
 		return fmt.Errorf("column switch failed: %w", err)
 	}
 
-	// 6. Clear cache
-	if err := cmd.clearCache(); err != nil {
-		logrus.Warnf("Cache cleanup failed, recommend manual service restart: %v", err)
-	}
-
-	// 7. Clean up temporary table
+	// 6. Clean up temporary table
 	if err := cmd.dropTempTable(); err != nil {
 		logrus.Warnf("Temporary table cleanup failed, can manually drop temp_migration table: %v", err)
 	}
@@ -408,7 +410,7 @@ func (cmd *MigrateKeysCommand) createTempTable() error {
 
 	// Drop existing temp table if exists
 	if err := cmd.db.Exec("DROP TABLE IF EXISTS temp_migration").Error; err != nil {
-		logrus.WithError(err).Warn("Failed to drop existing temp table, continuing anyway")
+		return fmt.Errorf("failed to drop existing temporary table: %w", err)
 	}
 
 	dbType := cmd.db.Dialector.Name()
@@ -416,14 +418,6 @@ func (cmd *MigrateKeysCommand) createTempTable() error {
 
 	// Use database-specific syntax for better compatibility
 	switch dbType {
-	case "mysql":
-		createTableSQL = `
-			CREATE TABLE temp_migration (
-				id BIGINT PRIMARY KEY,
-				key_value_new TEXT,
-				key_hash_new VARCHAR(255)
-			)
-		`
 	case "postgres":
 		createTableSQL = `
 			CREATE TABLE temp_migration (
@@ -442,14 +436,7 @@ func (cmd *MigrateKeysCommand) createTempTable() error {
 			)
 		`
 	default:
-		// Fallback to generic syntax
-		createTableSQL = `
-			CREATE TABLE temp_migration (
-				id INTEGER PRIMARY KEY,
-				key_value_new TEXT,
-				key_hash_new VARCHAR(255)
-			)
-		`
+		return fmt.Errorf("unsupported database type: %s", dbType)
 	}
 
 	// Create temp table with minimal structure
@@ -636,15 +623,6 @@ func (cmd *MigrateKeysCommand) switchColumns() error {
 		var updateSQL string
 
 		switch dbType {
-		case "mysql":
-			// MySQL uses JOIN syntax for cross-table UPDATE
-			updateSQL = `
-				UPDATE api_keys a
-				INNER JOIN temp_migration t ON a.id = t.id
-				SET a.key_value = t.key_value_new,
-				    a.key_hash = t.key_hash_new
-			`
-
 		case "postgres":
 			// PostgreSQL uses FROM clause for cross-table UPDATE
 			updateSQL = `
@@ -676,22 +654,4 @@ func (cmd *MigrateKeysCommand) switchColumns() error {
 		logrus.Info("Successfully updated original table with migrated data")
 		return nil
 	})
-}
-
-// clearCache cleans cache
-func (cmd *MigrateKeysCommand) clearCache() error {
-	logrus.Info("Starting cache cleanup...")
-
-	if cmd.cacheStore == nil {
-		logrus.Info("No cache storage configured, skipping cache cleanup")
-		return nil
-	}
-
-	logrus.Info("Executing cache cleanup...")
-	if err := cmd.cacheStore.Clear(); err != nil {
-		return fmt.Errorf("cache cleanup failed: %w", err)
-	}
-
-	logrus.Info("Cache cleanup successful")
-	return nil
 }

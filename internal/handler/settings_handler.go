@@ -7,7 +7,6 @@ import (
 	"gpt-load/internal/response"
 	"gpt-load/internal/utils"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -79,11 +78,18 @@ func (s *Server) UpdateSettings(c *gin.Context) {
 
 	// 更新配置
 	if err := s.SettingsManager.UpdateSettings(settingsMap); err != nil {
-		response.Error(c, app_errors.NewAPIError(app_errors.ErrDatabase, err.Error()))
+		if apiErr, ok := err.(*app_errors.APIError); ok {
+			response.Error(c, apiErr)
+		} else {
+			response.Error(c, app_errors.NewAPIError(app_errors.ErrDatabase, err.Error()))
+		}
 		return
 	}
 
-	time.Sleep(100 * time.Millisecond) // 等待异步更新配置
+	if err := s.GroupManager.Reload(); err != nil {
+		response.Error(c, app_errors.NewAPIError(app_errors.ErrDatabase, err.Error()))
+		return
+	}
 
 	response.SuccessI18n(c, "settings.update_success", nil)
 }

@@ -4,8 +4,6 @@ import (
 	"gpt-load/internal/failover"
 	"gpt-load/internal/types"
 	"time"
-
-	"gorm.io/datatypes"
 )
 
 // Key状态
@@ -89,15 +87,15 @@ type Group struct {
 	ProxyKeys           string               `gorm:"type:text" json:"proxy_keys"`
 	Description         string               `gorm:"type:varchar(512)" json:"description"`
 	GroupType           string               `gorm:"type:varchar(50);default:'standard'" json:"group_type"` // 'standard' or 'aggregate'
-	Upstreams           datatypes.JSON       `gorm:"type:json;not null" json:"upstreams"`
+	Upstreams           JSON                 `gorm:"type:json;serializer:json;not null" json:"upstreams"`
 	ValidationEndpoint  string               `gorm:"type:varchar(255)" json:"validation_endpoint"`
 	ChannelType         string               `gorm:"type:varchar(50);not null" json:"channel_type"`
 	Sort                int                  `gorm:"default:0" json:"sort"`
 	TestModel           string               `gorm:"type:varchar(255);not null" json:"test_model"`
-	ParamOverrides      datatypes.JSONMap    `gorm:"type:json" json:"param_overrides"`
-	Config              datatypes.JSONMap    `gorm:"type:json" json:"config"`
-	HeaderRules         datatypes.JSON       `gorm:"type:json" json:"header_rules"`
-	ModelRedirectRules  datatypes.JSONMap    `gorm:"type:json" json:"model_redirect_rules"`
+	ParamOverrides      JSONMap              `gorm:"type:json;serializer:json" json:"param_overrides"`
+	Config              JSONMap              `gorm:"type:json;serializer:json" json:"config"`
+	HeaderRules         JSON                 `gorm:"type:json;serializer:json" json:"header_rules"`
+	ModelRedirectRules  JSONMap              `gorm:"type:json;serializer:json" json:"model_redirect_rules"`
 	ModelRedirectStrict bool                 `gorm:"default:false" json:"model_redirect_strict"`
 	APIKeys             []APIKey             `gorm:"foreignKey:GroupID" json:"api_keys"`
 	SubGroups           []GroupSubGroup      `gorm:"-" json:"sub_groups,omitempty"`

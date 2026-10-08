@@ -47,7 +47,7 @@ func (s *CronChecker) Start() {
 }
 
 // Stop stops the cron job, respecting the context for shutdown timeout.
-func (s *CronChecker) Stop(ctx context.Context) {
+func (s *CronChecker) Stop(ctx context.Context) error {
 	close(s.stopChan)
 
 	// Wait for the goroutine to finish, or for the shutdown to time out.
@@ -60,8 +60,9 @@ func (s *CronChecker) Stop(ctx context.Context) {
 	select {
 	case <-done:
 		logrus.Info("CronChecker stopped gracefully.")
+		return nil
 	case <-ctx.Done():
-		logrus.Warn("CronChecker stop timed out.")
+		return ctx.Err()
 	}
 }
 
@@ -76,7 +77,7 @@ func (s *CronChecker) runLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			logrus.Debug("CronChecker: Running as Master, submitting validation jobs.")
+			logrus.Debug("CronChecker: Submitting validation jobs.")
 			s.submitValidationJobs()
 		case <-s.stopChan:
 			return
@@ -97,7 +98,12 @@ func (s *CronChecker) submitValidationJobs() {
 
 	for i := range groups {
 		group := &groups[i]
-		group.EffectiveConfig = s.SettingsManager.GetEffectiveConfig(group.Config)
+		effectiveConfig, err := s.SettingsManager.GetEffectiveConfig(group.Config)
+		if err != nil {
+			logrus.WithError(err).WithField("group_id", group.ID).Error("CronChecker: Invalid group configuration")
+			continue
+		}
+		group.EffectiveConfig = effectiveConfig
 		interval := time.Duration(group.EffectiveConfig.KeyValidationIntervalMinutes) * time.Minute
 
 		if group.LastValidatedAt == nil || validationStartTime.Sub(*group.LastValidatedAt) > interval {

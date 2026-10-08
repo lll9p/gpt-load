@@ -36,8 +36,7 @@ var DefaultConstants = Constants{
 
 // Manager implements the ConfigManager interface
 type Manager struct {
-	config          *Config
-	settingsManager *SystemSettingsManager
+	config *Config
 }
 
 // Config represents the application configuration
@@ -48,15 +47,12 @@ type Config struct {
 	Performance   types.PerformanceConfig
 	Log           types.LogConfig
 	Database      types.DatabaseConfig
-	RedisDSN      string
 	EncryptionKey string
 }
 
 // NewManager creates a new configuration manager
-func NewManager(settingsManager *SystemSettingsManager) (types.ConfigManager, error) {
-	manager := &Manager{
-		settingsManager: settingsManager,
-	}
+func NewManager() (types.ConfigManager, error) {
+	manager := &Manager{}
 	if err := manager.ReloadConfig(); err != nil {
 		return nil, err
 	}
@@ -71,7 +67,6 @@ func (m *Manager) ReloadConfig() error {
 
 	config := &Config{
 		Server: types.ServerConfig{
-			IsMaster:                !utils.ParseBoolean(os.Getenv("IS_SLAVE"), false),
 			Port:                    utils.ParseInteger(os.Getenv("PORT"), 3001),
 			Host:                    utils.GetEnvOrDefault("HOST", "0.0.0.0"),
 			ReadTimeout:             utils.ParseInteger(os.Getenv("SERVER_READ_TIMEOUT"), 60),
@@ -101,7 +96,6 @@ func (m *Manager) ReloadConfig() error {
 		Database: types.DatabaseConfig{
 			DSN: utils.GetEnvOrDefault("DATABASE_DSN", "./data/gpt-load.db"),
 		},
-		RedisDSN:      os.Getenv("REDIS_DSN"),
 		EncryptionKey: os.Getenv("ENCRYPTION_KEY"),
 	}
 	m.config = config
@@ -112,11 +106,6 @@ func (m *Manager) ReloadConfig() error {
 	}
 
 	return nil
-}
-
-// IsMaster returns Server mode
-func (m *Manager) IsMaster() bool {
-	return m.config.Server.IsMaster
 }
 
 // GetAuthConfig returns authentication configuration
@@ -137,11 +126,6 @@ func (m *Manager) GetPerformanceConfig() types.PerformanceConfig {
 // GetLogConfig returns logging configuration
 func (m *Manager) GetLogConfig() types.LogConfig {
 	return m.config.Log
-}
-
-// GetRedisDSN returns the Redis DSN string.
-func (m *Manager) GetRedisDSN() string {
-	return m.config.RedisDSN
 }
 
 // GetDatabaseConfig returns the database configuration.
@@ -211,7 +195,6 @@ func (m *Manager) DisplayServerConfig() {
 	perfConfig := m.GetPerformanceConfig()
 	logConfig := m.GetLogConfig()
 	dbConfig := m.GetDatabaseConfig()
-	redisDSN := m.GetRedisDSN()
 	encryptionKey := m.GetEncryptionKey()
 
 	logrus.Info("")
@@ -252,11 +235,6 @@ func (m *Manager) DisplayServerConfig() {
 		logrus.Info("    Database: configured")
 	} else {
 		logrus.Info("    Database: not configured")
-	}
-	if redisDSN != "" {
-		logrus.Info("    Redis: configured")
-	} else {
-		logrus.Info("    Redis: not configured")
 	}
 	logrus.Info("====================================")
 	logrus.Info("")

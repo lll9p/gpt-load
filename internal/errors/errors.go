@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
@@ -71,13 +70,6 @@ func ParseDBError(err error) *APIError {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if pgErr.Code == "23505" { // unique_violation
-			return ErrDuplicateResource
-		}
-	}
-
-	var mysqlErr *mysql.MySQLError
-	if errors.As(err, &mysqlErr) {
-		if mysqlErr.Number == 1062 { // Duplicate entry
 			return ErrDuplicateResource
 		}
 	}

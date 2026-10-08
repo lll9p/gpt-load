@@ -1,122 +1,103 @@
 package config
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"gpt-load/internal/db"
+	app_errors "gpt-load/internal/errors"
 	"gpt-load/internal/failover"
 	"gpt-load/internal/models"
-	"gpt-load/internal/store"
-	"gpt-load/internal/syncer"
 	"gpt-load/internal/types"
 	"gpt-load/internal/utils"
+	"net/url"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/datatypes"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-const SettingsUpdateChannel = "system_settings:updated"
-
-// SystemSettingsManager 管理系统配置
+// SystemSettingsManager stores the current system settings snapshot.
 type SystemSettingsManager struct {
-	syncer *syncer.CacheSyncer[types.SystemSettings]
+	db       *gorm.DB
+	mu       sync.RWMutex
+	reloadMu sync.Mutex
+	settings types.SystemSettings
 }
 
-// NewSystemSettingsManager creates a new, uninitialized SystemSettingsManager.
-func NewSystemSettingsManager() *SystemSettingsManager {
-	return &SystemSettingsManager{}
+// NewSystemSettingsManager creates an uninitialized settings manager.
+func NewSystemSettingsManager(db *gorm.DB) *SystemSettingsManager {
+	return &SystemSettingsManager{db: db}
 }
 
 func validateStringSettingValue(key, val string) error {
-	if key == "failover_status_codes" {
+	switch key {
+	case "failover_status_codes":
 		if _, err := failover.ParseStatusCodeMatcher(val); err != nil {
+			return fmt.Errorf("invalid value for %s (%q): %w", key, val, err)
+		}
+	case "app_url":
+		if _, err := url.Parse(val); err != nil {
 			return fmt.Errorf("invalid value for %s (%q): %w", key, val, err)
 		}
 	}
 	return nil
 }
 
-type groupManager interface {
-	Invalidate() error
+// Initialize loads the initial settings snapshot.
+func (sm *SystemSettingsManager) Initialize() error {
+	return sm.Reload()
 }
 
-// Initialize initializes the SystemSettingsManager with database and store dependencies.
-func (sm *SystemSettingsManager) Initialize(store store.Store, gm groupManager, isMaster bool) error {
-	settingsLoader := func() (types.SystemSettings, error) {
-		var dbSettings []models.SystemSetting
-		if err := db.DB.Find(&dbSettings).Error; err != nil {
-			return types.SystemSettings{}, fmt.Errorf("failed to load system settings from db: %w", err)
-		}
+// Reload loads settings and replaces the snapshot only after a successful load.
+func (sm *SystemSettingsManager) Reload() error {
+	sm.reloadMu.Lock()
+	defer sm.reloadMu.Unlock()
+	var dbSettings []models.SystemSetting
+	if err := sm.db.Find(&dbSettings).Error; err != nil {
+		return fmt.Errorf("failed to load system settings from db: %w", err)
+	}
 
-		settingsMap := make(map[string]string)
-		for _, setting := range dbSettings {
-			settingsMap[setting.SettingKey] = setting.SettingValue
-		}
+	settingsMap := make(map[string]string)
+	for _, setting := range dbSettings {
+		settingsMap[setting.SettingKey] = setting.SettingValue
+	}
 
-		// Start with default settings, then override with values from the database.
-		settings := utils.DefaultSystemSettings()
-		v := reflect.ValueOf(&settings).Elem()
-		t := v.Type()
-		jsonToField := make(map[string]string)
-		for i := range t.NumField() {
-			field := t.Field(i)
-			jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
-			if jsonTag != "" {
-				jsonToField[jsonTag] = field.Name
-			}
+	// Start with default settings, then override with values from the database.
+	settings := utils.DefaultSystemSettings()
+	v := reflect.ValueOf(&settings).Elem()
+	t := v.Type()
+	jsonToField := make(map[string]string)
+	for i := range t.NumField() {
+		field := t.Field(i)
+		jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
+		if jsonTag != "" {
+			jsonToField[jsonTag] = field.Name
 		}
+	}
 
-		for key, valStr := range settingsMap {
-			if fieldName, ok := jsonToField[key]; ok {
-				fieldValue := v.FieldByName(fieldName)
-				if fieldValue.IsValid() && fieldValue.CanSet() {
-					if err := utils.SetFieldFromString(fieldValue, valStr); err != nil {
-						logrus.Warnf("Failed to set value from map for field %s: %v", fieldName, err)
-					}
+	for key, valStr := range settingsMap {
+		if fieldName, ok := jsonToField[key]; ok {
+			fieldValue := v.FieldByName(fieldName)
+			if fieldValue.IsValid() && fieldValue.CanSet() {
+				if err := utils.SetFieldFromString(fieldValue, valStr); err != nil {
+					return fmt.Errorf("failed to load setting %s: %w", key, err)
 				}
 			}
 		}
-
-		settings.ProxyKeysMap = utils.StringToSet(settings.ProxyKeys, ",")
-
-		sm.DisplaySystemConfig(settings)
-
-		return settings, nil
 	}
 
-	afterLoader := func(newData types.SystemSettings) {
-		if !isMaster {
-			return
-		}
-		gm.Invalidate()
-	}
+	settings.ProxyKeysMap = utils.StringToSet(settings.ProxyKeys, ",")
 
-	syncer, err := syncer.NewCacheSyncer(
-		settingsLoader,
-		store,
-		SettingsUpdateChannel,
-		logrus.WithField("syncer", "system_settings"),
-		afterLoader,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create system settings syncer: %w", err)
-	}
+	sm.DisplaySystemConfig(settings)
 
-	sm.syncer = syncer
+	sm.mu.Lock()
+	sm.settings = settings
+	sm.mu.Unlock()
 	return nil
-}
-
-// Stop gracefully stops the SystemSettingsManager's background syncer.
-func (sm *SystemSettingsManager) Stop(ctx context.Context) {
-	if sm.syncer != nil {
-		sm.syncer.Stop()
-	}
 }
 
 // EnsureSettingsInitialized 确保数据库中存在所有系统设置的记录。
@@ -126,8 +107,11 @@ func (sm *SystemSettingsManager) EnsureSettingsInitialized(authConfig types.Auth
 
 	for _, meta := range metadata {
 		var existing models.SystemSetting
-		err := db.DB.Where("setting_key = ?", meta.Key).First(&existing).Error
+		err := sm.db.Where("setting_key = ?", meta.Key).First(&existing).Error
 		if err != nil {
+			if err != gorm.ErrRecordNotFound {
+				return err
+			}
 			value := fmt.Sprintf("%v", meta.DefaultValue)
 			if meta.Key == "app_url" {
 				host := os.Getenv("HOST")
@@ -150,11 +134,11 @@ func (sm *SystemSettingsManager) EnsureSettingsInitialized(authConfig types.Auth
 				SettingValue: value,
 				Description:  meta.Description,
 			}
-			if err := db.DB.Create(&setting).Error; err != nil {
+			if err := sm.db.Create(&setting).Error; err != nil {
 				logrus.Errorf("Failed to initialize setting %s: %v", setting.SettingKey, err)
 				return err
 			}
-			logrus.Infof("Initialized system setting: %s = %s", setting.SettingKey, setting.SettingValue)
+			logrus.Infof("Initialized system setting: %s", setting.SettingKey)
 		}
 	}
 
@@ -163,36 +147,21 @@ func (sm *SystemSettingsManager) EnsureSettingsInitialized(authConfig types.Auth
 
 // GetSettings 获取当前系统配置
 func (sm *SystemSettingsManager) GetSettings() types.SystemSettings {
-	if sm.syncer == nil {
-		logrus.Warn("SystemSettingsManager is not initialized, returning default settings.")
-		return utils.DefaultSystemSettings()
-	}
-	return sm.syncer.Get()
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.settings
 }
 
 // GetAppUrl returns the effective App URL.
 func (sm *SystemSettingsManager) GetAppUrl() string {
-	settings := sm.GetSettings()
-	if settings.AppUrl != "" {
-		return settings.AppUrl
-	}
-
-	host := os.Getenv("HOST")
-	if host == "" || host == "0.0.0.0" {
-		host = "localhost"
-	}
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3001"
-	}
-	return fmt.Sprintf("http://%s:%s", host, port)
+	return sm.GetSettings().AppUrl
 }
 
 // UpdateSettings 更新系统配置
 func (sm *SystemSettingsManager) UpdateSettings(settingsMap map[string]any) error {
 	// 验证配置项
 	if err := sm.ValidateSettings(settingsMap); err != nil {
-		return err
+		return app_errors.NewAPIError(app_errors.ErrValidation, err.Error())
 	}
 
 	// 更新数据库
@@ -205,7 +174,7 @@ func (sm *SystemSettingsManager) UpdateSettings(settingsMap map[string]any) erro
 	}
 
 	if len(settingsToUpdate) > 0 {
-		if err := db.DB.Clauses(clause.OnConflict{
+		if err := sm.db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "setting_key"}},
 			DoUpdates: clause.AssignmentColumns([]string{"setting_value", "updated_at"}),
 		}).Create(&settingsToUpdate).Error; err != nil {
@@ -213,27 +182,25 @@ func (sm *SystemSettingsManager) UpdateSettings(settingsMap map[string]any) erro
 		}
 	}
 
-	// 触发所有实例重新加载
-	return sm.syncer.Invalidate()
+	// Reload the snapshot after persistence.
+	return sm.Reload()
 }
 
 // GetEffectiveConfig 获取有效配置 (系统配置 + 分组覆盖)
-func (sm *SystemSettingsManager) GetEffectiveConfig(groupConfigJSON datatypes.JSONMap) types.SystemSettings {
+func (sm *SystemSettingsManager) GetEffectiveConfig(groupConfigJSON map[string]any) (types.SystemSettings, error) {
 	effectiveConfig := sm.GetSettings()
 
 	if groupConfigJSON == nil {
-		return effectiveConfig
+		return effectiveConfig, nil
 	}
 
 	var groupConfig models.GroupConfig
-	groupConfigBytes, err := groupConfigJSON.MarshalJSON()
+	groupConfigBytes, err := json.Marshal(groupConfigJSON)
 	if err != nil {
-		logrus.Warnf("Failed to marshal group config JSON, using system settings only. Error: %v", err)
-		return effectiveConfig
+		return types.SystemSettings{}, fmt.Errorf("failed to marshal group config: %w", err)
 	}
 	if err := json.Unmarshal(groupConfigBytes, &groupConfig); err != nil {
-		logrus.Warnf("Failed to unmarshal group config, using system settings only. Error: %v", err)
-		return effectiveConfig
+		return types.SystemSettings{}, fmt.Errorf("failed to unmarshal group config: %w", err)
 	}
 
 	gcv := reflect.ValueOf(groupConfig)
@@ -252,7 +219,7 @@ func (sm *SystemSettingsManager) GetEffectiveConfig(groupConfigJSON datatypes.JS
 		}
 	}
 
-	return effectiveConfig
+	return effectiveConfig, nil
 }
 
 // ValidateSettings 验证系统配置的有效性

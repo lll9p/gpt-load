@@ -46,6 +46,7 @@ type KeyService struct {
 	KeyProvider   *keypool.KeyProvider
 	KeyValidator  *keypool.KeyValidator
 	EncryptionSvc encryption.Service
+	tasks         taskState
 }
 
 // NewKeyService creates a new KeyService.
@@ -59,7 +60,7 @@ func NewKeyService(db *gorm.DB, keyProvider *keypool.KeyProvider, keyValidator *
 }
 
 // AddMultipleKeys handles the business logic of creating new keys from a text block.
-// deprecated: use KeyImportService for large imports
+// Use StartImportTask for large imports.
 func (s *KeyService) AddMultipleKeys(groupID uint, keysText string) (*AddKeysResult, error) {
 	keys := s.ParseKeysFromText(keysText)
 	if len(keys) > maxRequestKeys {
@@ -120,7 +121,7 @@ func (s *KeyService) processAndCreateKeys(
 
 		encryptedKey, err := s.EncryptionSvc.Encrypt(trimmedKey)
 		if err != nil {
-			logrus.WithError(err).WithField("key", trimmedKey).Error("Failed to encrypt key, skipping")
+			logrus.WithError(err).Error("Failed to encrypt key, skipping")
 			continue
 		}
 
@@ -167,7 +168,7 @@ func (s *KeyService) ParseKeysFromText(text string) []string {
 		return s.filterValidKeys(keys)
 	}
 
-	// 通用解析：通过分隔符分割文本，不使用复杂的正则表达式
+	// Split plain-text keys on whitespace and separators.
 	delimiters := regexp.MustCompile(`[\s,;\n\r\t]+`)
 	splitKeys := delimiters.Split(strings.TrimSpace(text), -1)
 

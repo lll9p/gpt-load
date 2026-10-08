@@ -181,7 +181,7 @@ func (s *Server) AddMultipleKeysAsync(c *gin.Context) {
 		return
 	}
 
-	taskStatus, err := s.KeyImportService.StartImportTask(group, keysText)
+	taskStatus, err := s.KeyService.StartImportTask(group, keysText)
 	if err != nil {
 		response.Error(c, app_errors.NewAPIError(app_errors.ErrTaskInProgress, err.Error()))
 		return
@@ -285,7 +285,7 @@ func (s *Server) DeleteMultipleKeysAsync(c *gin.Context) {
 		return
 	}
 
-	taskStatus, err := s.KeyDeleteService.StartDeleteTask(group, req.KeysText)
+	taskStatus, err := s.KeyService.StartDeleteTask(group, req.KeysText)
 	if err != nil {
 		response.Error(c, app_errors.NewAPIError(app_errors.ErrTaskInProgress, err.Error()))
 		return
@@ -393,7 +393,7 @@ func (s *Server) ValidateGroupKeys(c *gin.Context) {
 		return
 	}
 
-	taskStatus, err := s.KeyManualValidationService.StartValidationTask(group, req.Status)
+	taskStatus, err := s.KeyService.StartValidationTask(group, req.Status)
 	if err != nil {
 		response.Error(c, app_errors.NewAPIError(app_errors.ErrTaskInProgress, err.Error()))
 		return

@@ -2,7 +2,6 @@ package types
 
 // ConfigManager defines the interface for configuration management
 type ConfigManager interface {
-	IsMaster() bool
 	GetAuthConfig() AuthConfig
 	GetCORSConfig() CORSConfig
 	GetPerformanceConfig() PerformanceConfig
@@ -10,7 +9,6 @@ type ConfigManager interface {
 	GetDatabaseConfig() DatabaseConfig
 	GetEncryptionKey() string
 	GetEffectiveServerConfig() ServerConfig
-	GetRedisDSN() string
 	Validate() error
 	DisplayServerConfig()
 	ReloadConfig() error
@@ -50,7 +48,6 @@ type SystemSettings struct {
 type ServerConfig struct {
 	Port                    int    `json:"port"`
 	Host                    string `json:"host"`
-	IsMaster                bool   `json:"is_master"`
 	ReadTimeout             int    `json:"read_timeout"`
 	WriteTimeout            int    `json:"write_timeout"`
 	IdleTimeout             int    `json:"idle_timeout"`

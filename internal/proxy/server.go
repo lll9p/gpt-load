@@ -29,10 +29,9 @@ import (
 type ProxyServer struct {
 	keyProvider       *keypool.KeyProvider
 	groupManager      *services.GroupManager
-	subGroupManager   *services.SubGroupManager
 	settingsManager   *config.SystemSettingsManager
 	channelFactory    *channel.Factory
-	requestLogService *services.RequestLogService
+	requestLogService *services.LogService
 	encryptionSvc     encryption.Service
 }
 
@@ -40,16 +39,14 @@ type ProxyServer struct {
 func NewProxyServer(
 	keyProvider *keypool.KeyProvider,
 	groupManager *services.GroupManager,
-	subGroupManager *services.SubGroupManager,
 	settingsManager *config.SystemSettingsManager,
 	channelFactory *channel.Factory,
-	requestLogService *services.RequestLogService,
+	requestLogService *services.LogService,
 	encryptionSvc encryption.Service,
 ) (*ProxyServer, error) {
 	return &ProxyServer{
 		keyProvider:       keyProvider,
 		groupManager:      groupManager,
-		subGroupManager:   subGroupManager,
 		settingsManager:   settingsManager,
 		channelFactory:    channelFactory,
 		requestLogService: requestLogService,
@@ -69,7 +66,7 @@ func (ps *ProxyServer) HandleProxy(c *gin.Context) {
 	}
 
 	// Select sub-group if this is an aggregate group
-	subGroupName, err := ps.subGroupManager.SelectSubGroup(originalGroup)
+	group, err := ps.groupManager.SelectSubGroup(originalGroup)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"aggregate_group": originalGroup.Name,
@@ -77,15 +74,6 @@ func (ps *ProxyServer) HandleProxy(c *gin.Context) {
 		}).Error("Failed to select sub-group from aggregate")
 		response.Error(c, app_errors.NewAPIError(app_errors.ErrNoKeysAvailable, "No available sub-groups"))
 		return
-	}
-
-	group := originalGroup
-	if subGroupName != "" {
-		group, err = ps.groupManager.GetGroupByName(subGroupName)
-		if err != nil {
-			response.Error(c, app_errors.ParseDBError(err))
-			return
-		}
 	}
 
 	channelHandler, err := ps.channelFactory.GetChannel(group)
@@ -266,7 +254,6 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		return
 	}
 
-	// ps.keyProvider.UpdateStatus(apiKey, group, true) // 请求成功不再重置成功次数，减少IO消耗
 	logrus.Debugf("Request for group %s succeeded on attempt %d with key %s", group.Name, retryCount+1, utils.MaskAPIKey(apiKey.KeyValue))
 
 	// Check if this is a model list request (needs special handling)
@@ -312,9 +299,6 @@ func (ps *ProxyServer) logRequest(
 	bodyBytes []byte,
 	requestType string,
 ) {
-	if ps.requestLogService == nil {
-		return
-	}
 
 	var requestBodyToLog, userAgent string
 

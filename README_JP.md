@@ -1,14 +1,14 @@
-# GPT-Load
+# GPT-Load Lite
 
 [English](README.md) | [中文](README_CN.md) | 日本語
 
-[![Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
-![Go Version](https://img.shields.io/badge/Go-1.24+-blue.svg)
+[![Upstream Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
+![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-複数のAIサービスを統合する必要がある企業や開発者向けに特別に設計された、高性能でエンタープライズグレードのAI APIトランスペアレントプロキシサービス。Goで構築され、インテリジェントなキー管理、ロードバランシング、包括的な監視機能を備え、高並行性の本番環境向けに設計されています。
+GPT-Load Liteは、Goで開発されたGPT-Loadの単一インスタンス向け軽量版です。AI APIの透過プロキシ、キー管理、アップストリームのロードバランシング、監視、動的設定、認証、APIキーの暗号化機能を維持しています。
 
-詳細については、[公式サイト](https://www.gpt-load.com/v1)をご覧ください。
+元のプロジェクトについては、[上流の公式サイト](https://www.gpt-load.com/v1)をご覧ください。そちらのデプロイ手順はLiteには適用されません。
 
 <a href="https://trendshift.io/repositories/14880" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14880" alt="tbphp%2Fgpt-load | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 <a href="https://hellogithub.com/repository/tbphp/gpt-load" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=554dc4c46eb14092b9b0c56f1eb9021c&claim_uid=Qlh8vzrWJ0HCneG" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
@@ -43,7 +43,6 @@
 - **ロードバランシング**: サービスの可用性を向上させる複数のアップストリームエンドポイント間の重み付けロードバランシング
 - **スマート障害処理**: サービスの継続性を確保する自動キーブラックリスト管理と復旧メカニズム
 - **動的設定**: システム設定とグループ設定は再起動不要のホットリロードをサポート
-- **エンタープライズアーキテクチャ**: 水平スケーリングと高可用性をサポートする分散リーダー・フォロワーデプロイメント
 - **モダンな管理**: Vue 3ベースの直感的で使いやすいWeb管理インターフェース
 - **包括的な監視**: リアルタイム統計、ヘルスチェック、詳細なリクエストログ
 - **高性能設計**: ゼロコピーストリーミング、接続プール再利用、アトミック操作
@@ -62,110 +61,88 @@ GPT-Loadは、さまざまなAIサービスプロバイダーのネイティブA
 
 ### システム要件
 
-- Go 1.24+（ソースビルド用）
-- Docker（コンテナ化デプロイメント用）
-- MySQL、PostgreSQL、またはSQLite（データベースストレージ用）
-- Redis（キャッシュと分散調整用、オプション）
+- Go 1.25+（ソースビルド用）
+- Docker（コンテナでのデプロイ用）
+- SQLite（デフォルト。別途データベースサーバーは不要）またはPostgreSQL
+
+**単一インスタンスのみ対応：** GPT-Load Liteは、PostgreSQLを使用する場合でも、複数のアプリケーションインスタンス間での状態共有に対応していません。一括書き込み待ちのログとタスク状態はメモリに保持され、再起動後には引き継がれません。異常終了すると、データベースに未保存のログが失われる可能性があります。
+
+以下のコマンドは、ローカルのGPT-Load Liteソースのルートディレクトリで実行してください。このソースからビルドする必要があります。上流のGPT-Loadイメージやデプロイ用ファイルでは、Liteではなく簡素化前のバージョンが実行されます。
 
 ### 方法1: Dockerクイックスタート
 
 ```bash
+# Build the local source image
+docker build -t gpt-load-lite:local .
+
 docker run -d --name gpt-load \
     -p 3001:3001 \
     -e AUTH_KEY=your-secure-key-here \
     -v "$(pwd)/data":/app/data \
-    ghcr.io/tbphp/gpt-load:1
+    gpt-load-lite:local
 ```
 
-> `your-secure-key-here`を強力なパスワードに変更してください（デフォルト値は絶対に使用しないでください）。その後、管理インターフェースにログインできます：<http://localhost:3001>
-
-> v1 メンテナンスラインの安定版 Docker タグは `1` です。v1 リリースでは `latest` を更新しません。移行期間の終了後、`latest` は v2 を指す可能性があります。既存の v1 環境ではイメージを `:1` に固定してください。
+> デプロイ前に`your-secure-key-here`を強力なランダムキーに変更してください。
 
 ### 方法2: Docker Composeを使用（推奨）
 
-**インストールコマンド：**
-
 ```bash
-# ディレクトリを作成
-mkdir -p gpt-load && cd gpt-load
+# Create configuration from the template in this source checkout
+cp .env.example .env
 
-# 設定ファイルをダウンロード
-wget https://raw.githubusercontent.com/tbphp/gpt-load/refs/heads/v1/docker-compose.yml
-wget -O .env https://raw.githubusercontent.com/tbphp/gpt-load/refs/heads/v1/.env.example
+# Edit .env and set AUTH_KEY to a strong, random key.
+# Never use default or simple keys such as sk-123456.
 
-# .envファイルを編集し、AUTH_KEYを強力なパスワードに変更します。デフォルトやsk-123456のような単純なキーは絶対に使用しないでください。
-
-# サービスを開始
-docker compose up -d
+# Build from local source and start the service
+docker compose up -d --build
 ```
 
-デプロイメント前に、デフォルトの管理キー（AUTH_KEY）を必ず変更してください。推奨フォーマット：sk-prod-[32文字のランダム文字列]。
-
-デフォルトのインストールは、軽量な単一インスタンスアプリケーションに適したSQLiteバージョンを使用します。
-
-MySQL、PostgreSQL、Redisをインストールする必要がある場合は、`docker-compose.yml`ファイルで必要なサービスのコメントを解除し、対応する環境変数を設定して、再起動してください。
+デフォルトではSQLiteを使用します。PostgreSQLを使用する場合は、`docker-compose.yml`のPostgreSQLサービスとその`depends_on`項目のコメントを解除し、`.env`に`DATABASE_DSN`を設定してください。データベースには強力なパスワードを設定してください。PostgreSQLでも、アプリケーションインスタンスは1つのみ対応です。
 
 **その他のコマンド：**
 
 ```bash
-# サービスステータスを確認
+# Check service status
 docker compose ps
 
-# ログを表示
+# View logs
 docker compose logs -f
 
-# サービスを再起動
+# Restart the service
 docker compose down && docker compose up -d
 
-# 最新の v1 バージョンに更新
-docker compose pull && docker compose down && docker compose up -d
+# Rebuild and deploy after updating your local Lite source
+docker compose up -d --build
 ```
 
-デプロイメント後：
+デプロイ後：
 
-- Web管理インターフェースにアクセス：<http://localhost:3001>
-- APIプロキシアドレス：<http://localhost:3001/proxy>
+- Web管理画面： <http://localhost:3001>
+- APIプロキシアドレス： <http://localhost:3001/proxy>
 
-> 変更したAUTH_KEYを使用して管理インターフェースにログインしてください。
+> 設定した`AUTH_KEY`で管理画面にログインしてください。
 
 ### 方法3: ソースビルド
 
-ソースビルドには、ローカルにインストールされたデータベース（SQLite、MySQL、またはPostgreSQL）とRedis（オプション）が必要です。
+ローカルのLiteソースでGo 1.25+を使用してください。SQLiteには別途データベースサーバーは不要です。PostgreSQLを使用する場合は、接続可能なPostgreSQLサーバーが必要です。
 
 ```bash
-# クローンとビルド
-git clone https://github.com/tbphp/gpt-load.git
-cd gpt-load
-go mod tidy
-
-# 設定を作成
+# Create configuration
 cp .env.example .env
 
-# .envファイルを編集し、AUTH_KEYを強力なパスワードに変更します。デフォルトやsk-123456のような単純なキーは絶対に使用しないでください。
-# .envでDATABASE_DSNとREDIS_DSNの設定を変更
-# REDIS_DSNはオプションです。設定されていない場合、メモリストレージが有効になります
+# Edit .env and set AUTH_KEY to a strong, random key.
+# Leave DATABASE_DSN empty for SQLite, or set a PostgreSQL DSN.
 
-# 実行
+# Run
 make run
 ```
 
-デプロイメント後：
+デプロイ後：
 
-- Web管理インターフェースにアクセス：<http://localhost:3001>
-- APIプロキシアドレス：<http://localhost:3001/proxy>
+- Web管理画面： <http://localhost:3001>
+- APIプロキシアドレス： <http://localhost:3001/proxy>
 
-> 変更したAUTH_KEYを使用して管理インターフェースにログインしてください。
-
-### 方法4: クラスターデプロイメント
-
-クラスターデプロイメントでは、すべてのノードが同じMySQL（またはPostgreSQL）とRedisに接続する必要があり、Redisは必須です。統一された分散MySQLとRedisクラスターの使用を推奨します。
-
-**デプロイメント要件：**
-
-- すべてのノードは同一の`AUTH_KEY`、`DATABASE_DSN`、`REDIS_DSN`を設定する必要があります
-- リーダー・フォロワーアーキテクチャで、フォロワーノードは環境変数を設定する必要があります：`IS_SLAVE=true`
-
-詳細については、[クラスターデプロイメントドキュメント](https://www.gpt-load.com/docs/cluster?lang=ja)を参照してください。
+> 設定した`AUTH_KEY`で管理画面にログインしてください。
 
 ## 設定システム
 
@@ -199,7 +176,6 @@ GPT-Loadは二層設定アーキテクチャを採用しています：
 | 書き込みタイムアウト                   | `SERVER_WRITE_TIMEOUT`             | 600             | HTTPサーバー書き込みタイムアウト（秒）           |
 | アイドルタイムアウト                   | `SERVER_IDLE_TIMEOUT`              | 120             | HTTP接続アイドルタイムアウト（秒）               |
 | グレースフルシャットダウンタイムアウト | `SERVER_GRACEFUL_SHUTDOWN_TIMEOUT` | 10              | サービスグレースフルシャットダウン待機時間（秒） |
-| フォロワーモード                       | `IS_SLAVE`                         | false           | クラスターデプロイメント用フォロワーノード識別子 |
 | タイムゾーン                           | `TZ`                               | `Asia/Shanghai` | タイムゾーンを指定                               |
 
 **セキュリティ設定：**
@@ -214,7 +190,6 @@ GPT-Loadは二層設定アーキテクチャを採用しています：
 | 設定             | 環境変数       | デフォルト           | 説明                                              |
 | ---------------- | -------------- | -------------------- | ------------------------------------------------- |
 | データベース接続 | `DATABASE_DSN` | `./data/gpt-load.db` | データベース接続文字列（DSN）またはファイルパス   |
-| Redis接続        | `REDIS_DSN`    | -                    | Redis接続文字列、空の場合はメモリストレージを使用 |
 
 **パフォーマンス＆CORS設定：**
 
@@ -308,8 +283,8 @@ GPT-LoadはAPIキーの暗号化保存をサポートしています。いつで
 #### Docker Composeデプロイメント
 
 ```bash
-# 1. イメージを更新（最新の v1 バージョンを使用していることを確認）
-docker compose pull
+# 1. Build the image from your local Lite source
+docker compose build
 
 # 2. サービスを停止
 docker compose down
