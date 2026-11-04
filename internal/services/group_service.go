@@ -81,7 +81,6 @@ type GroupCreateParams struct {
 	Name                 string
 	DisplayName          string
 	Description          string
-	GroupType            string
 	KeySelectionStrategy *string
 	Upstreams            json.RawMessage
 	ChannelType          string
@@ -94,7 +93,6 @@ type GroupCreateParams struct {
 	Config               map[string]any
 	HeaderRules          []models.HeaderRule
 	ProxyKeys            string
-	SubGroups            []SubGroupInput
 }
 
 // GroupUpdateParams captures updatable fields for a group.
@@ -102,7 +100,6 @@ type GroupUpdateParams struct {
 	Name                 *string
 	DisplayName          *string
 	Description          *string
-	GroupType            *string
 	KeySelectionStrategy *string
 	Upstreams            json.RawMessage
 	HasUpstreams         bool
@@ -117,7 +114,6 @@ type GroupUpdateParams struct {
 	Config               map[string]any
 	HeaderRules          *[]models.HeaderRule
 	ProxyKeys            *string
-	SubGroups            *[]SubGroupInput
 }
 
 // GroupReorderItem captures a group ID and target sort value.
@@ -169,46 +165,25 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_channel_type", map[string]any{"types": supported})
 	}
 
-	groupType := strings.TrimSpace(params.GroupType)
-	if groupType == "" {
-		groupType = "standard"
-	}
-	if groupType != "standard" && groupType != "aggregate" {
-		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_group_type", nil)
-	}
-
 	keySelectionStrategy := models.KeySelectionRoundRobin
 	if params.KeySelectionStrategy != nil {
-		if err := validateKeySelectionStrategy(*params.KeySelectionStrategy, groupType); err != nil {
+		if err := validateKeySelectionStrategy(*params.KeySelectionStrategy); err != nil {
 			return nil, err
 		}
 		keySelectionStrategy = *params.KeySelectionStrategy
 	}
 
-	var cleanedUpstreams json.RawMessage
-	var testModel string
-	var validationEndpoint string
-
-	switch groupType {
-	case "aggregate":
-		validationEndpoint = ""
-		cleanedUpstreams = json.RawMessage("[]")
-		testModel = "-"
-	case "standard":
-		testModel = strings.TrimSpace(params.TestModel)
-		if testModel == "" && channelType != "tavily" {
-			return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_required", nil)
-		}
-		cleaned, err := s.validateAndCleanUpstreams(params.Upstreams)
-		if err != nil {
-			return nil, err
-		}
-		cleanedUpstreams = cleaned
-
-		validationEndpoint = strings.TrimSpace(params.ValidationEndpoint)
-		if !isValidValidationEndpoint(validationEndpoint) {
-			return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_test_path", nil)
-		}
+	testModel := strings.TrimSpace(params.TestModel)
+	if testModel == "" && channelType != "tavily" {
+		return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_required", nil)
+	}
+	cleanedUpstreams, err := s.validateAndCleanUpstreams(params.Upstreams)
+	if err != nil {
+		return nil, err
+	}
+	validationEndpoint := strings.TrimSpace(params.ValidationEndpoint)
+	if !isValidValidationEndpoint(validationEndpoint) {
+		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_test_path", nil)
 	}
 
 	if channelType == "tavily" {
@@ -239,11 +214,6 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		headerRulesJSON = json.RawMessage("[]")
 	}
 
-	// Validate model redirect rules for aggregate groups
-	if groupType == "aggregate" && len(params.ModelRedirectRules) > 0 {
-		return nil, NewI18nError(app_errors.ErrValidation, "validation.aggregate_no_model_redirect", nil)
-	}
-
 	// Validate model redirect rules format
 	if err := validateModelRedirectRules(params.ModelRedirectRules); err != nil {
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_model_redirect", map[string]any{"error": err.Error()})
@@ -253,7 +223,6 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		Name:                 name,
 		DisplayName:          strings.TrimSpace(params.DisplayName),
 		Description:          strings.TrimSpace(params.Description),
-		GroupType:            groupType,
 		KeySelectionStrategy: keySelectionStrategy,
 		Upstreams:            models.JSON(cleanedUpstreams),
 		ChannelType:          channelType,
@@ -289,7 +258,7 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 	return &group, nil
 }
 
-// ListGroups returns all groups without sub-group relations.
+// ListGroups returns all groups.
 func (s *GroupService) ListGroups(ctx context.Context) ([]models.Group, error) {
 	var groups []models.Group
 	if err := s.db.WithContext(ctx).Order("sort asc, id desc").Find(&groups).Error; err != nil {
@@ -380,7 +349,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 	changedFields := []string{"updated_at"}
 
 	if params.KeySelectionStrategy != nil {
-		if err := validateKeySelectionStrategy(*params.KeySelectionStrategy, group.GroupType); err != nil {
+		if err := validateKeySelectionStrategy(*params.KeySelectionStrategy); err != nil {
 			return nil, err
 		}
 		group.KeySelectionStrategy = *params.KeySelectionStrategy
@@ -415,35 +384,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		changedFields = append(changedFields, "upstreams")
 	}
 
-	// Check if this group is used as a sub-group in aggregate groups before allowing critical changes
-	if group.GroupType != "aggregate" && (params.ChannelType != nil || params.ValidationEndpoint != nil) {
-		count, err := s.CountAggregateGroupsUsingSubGroup(tx, group.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		if count > 0 {
-			// Check if ChannelType is being changed
-			if params.ChannelType != nil {
-				cleanedChannelType := strings.TrimSpace(*params.ChannelType)
-				if group.ChannelType != cleanedChannelType {
-					return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_group_referenced_cannot_modify",
-						map[string]any{"count": count})
-				}
-			}
-
-			// Check if ValidationEndpoint is being changed
-			if params.ValidationEndpoint != nil {
-				cleanedValidationEndpoint := strings.TrimSpace(*params.ValidationEndpoint)
-				if group.ValidationEndpoint != cleanedValidationEndpoint {
-					return nil, NewI18nError(app_errors.ErrValidation, "validation.sub_group_referenced_cannot_modify",
-						map[string]any{"count": count})
-				}
-			}
-		}
-	}
-
-	if params.ChannelType != nil && group.GroupType != "aggregate" {
+	if params.ChannelType != nil {
 		cleanedChannelType := strings.TrimSpace(*params.ChannelType)
 		if !s.isValidChannelType(cleanedChannelType) {
 			supported := strings.Join(s.channelRegistry, ", ")
@@ -470,11 +411,6 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 	if params.ParamOverrides != nil {
 		group.ParamOverrides = models.JSONMap(params.ParamOverrides)
 		changedFields = append(changedFields, "param_overrides")
-	}
-
-	// Validate model redirect rules for aggregate groups
-	if group.GroupType == "aggregate" && params.ModelRedirectRules != nil && len(params.ModelRedirectRules) > 0 {
-		return nil, NewI18nError(app_errors.ErrValidation, "validation.aggregate_no_model_redirect", nil)
 	}
 
 	// Validate model redirect rules format
@@ -536,7 +472,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		group.TestModel = ""
 		group.ValidationEndpoint = "/search"
 		changedFields = append(changedFields, "test_model", "validation_endpoint")
-	} else if group.GroupType != "aggregate" && strings.TrimSpace(group.TestModel) == "" {
+	} else if strings.TrimSpace(group.TestModel) == "" {
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_required", nil)
 	}
 	// Select keeps zero values and JSON serializers without updating unrequested fields.
@@ -573,10 +509,6 @@ func (s *GroupService) DeleteGroup(ctx context.Context, id uint) error {
 
 	var group models.Group
 	if err := tx.First(&group, id).Error; err != nil {
-		return app_errors.ParseDBError(err)
-	}
-
-	if err := tx.Where("group_id = ? OR sub_group_id = ?", id, id).Delete(&models.GroupSubGroup{}).Error; err != nil {
 		return app_errors.ParseDBError(err)
 	}
 
@@ -709,12 +641,7 @@ func (s *GroupService) GetGroupStats(ctx context.Context, groupID uint) (*GroupS
 		return nil, app_errors.ParseDBError(err)
 	}
 
-	// 根据分组类型选择不同的统计逻辑
-	if group.GroupType == "aggregate" {
-		return s.getAggregateGroupStats(ctx, groupID)
-	}
-
-	return s.getStandardGroupStats(ctx, groupID)
+	return s.getGroupStats(ctx, groupID)
 }
 
 // queryGroupHourlyStats queries aggregated hourly statistics from group_hourly_stats table
@@ -803,11 +730,11 @@ func (s *GroupService) fetchRequestStats(ctx context.Context, groupID uint, stat
 	return errs
 }
 
-func (s *GroupService) getStandardGroupStats(ctx context.Context, groupID uint) (*GroupStats, error) {
+func (s *GroupService) getGroupStats(ctx context.Context, groupID uint) (*GroupStats, error) {
 	stats := &GroupStats{}
 	var allErrors []error
 
-	// Fetch key statistics (only for standard groups)
+	// Fetch key statistics
 	keyStats, err := s.fetchKeyStats(ctx, groupID)
 	if err != nil {
 		allErrors = append(allErrors, err)
@@ -825,18 +752,6 @@ func (s *GroupService) getStandardGroupStats(ctx context.Context, groupID uint) 
 	// Handle errors
 	if len(allErrors) > 0 {
 		logrus.WithContext(ctx).WithError(allErrors[0]).Error("errors occurred while fetching group stats")
-		return nil, NewI18nError(app_errors.ErrDatabase, "database.group_stats_failed", nil)
-	}
-
-	return stats, nil
-}
-
-func (s *GroupService) getAggregateGroupStats(ctx context.Context, groupID uint) (*GroupStats, error) {
-	stats := &GroupStats{}
-
-	// Aggregate groups only need request statistics, not key statistics
-	if errs := s.fetchRequestStats(ctx, groupID, stats); len(errs) > 0 {
-		logrus.WithContext(ctx).WithError(errs[0]).Error("errors occurred while fetching aggregate group stats")
 		return nil, NewI18nError(app_errors.ErrDatabase, "database.group_stats_failed", nil)
 	}
 
@@ -1065,12 +980,9 @@ func (s *GroupService) generateUniqueGroupName(db *gorm.DB, baseName string) (st
 	return "", fmt.Errorf("no available copy name for group %s", baseName)
 }
 
-func validateKeySelectionStrategy(strategy, groupType string) error {
+func validateKeySelectionStrategy(strategy string) error {
 	if strategy != models.KeySelectionRoundRobin && strategy != models.KeySelectionFillFirst {
 		return app_errors.NewAPIError(app_errors.ErrValidation, "key_selection_strategy must be round_robin or fill_first")
-	}
-	if groupType == "aggregate" && strategy == models.KeySelectionFillFirst {
-		return app_errors.NewAPIError(app_errors.ErrValidation, "aggregate groups do not support fill_first")
 	}
 	return nil
 }

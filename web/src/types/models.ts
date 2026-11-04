@@ -8,9 +8,6 @@ export interface ApiResponse<T> {
 // 密钥状态
 export type KeyStatus = "active" | "invalid" | undefined;
 
-// 分组类型
-export type GroupType = "standard" | "aggregate";
-
 export type KeySelectionStrategy = "round_robin" | "fill_first";
 
 // 渠道类型
@@ -41,29 +38,6 @@ export interface HeaderRule {
   action: "set" | "remove";
 }
 
-// 子分组配置（创建/更新时使用）
-export interface SubGroupConfig {
-  group_id: number;
-  weight: number;
-}
-
-// 子分组信息（展示时使用）
-export interface SubGroupInfo {
-  group: Group;
-  weight: number;
-  total_keys: number;
-  active_keys: number;
-  invalid_keys: number;
-}
-
-// 父聚合分组信息（展示时使用）
-export interface ParentAggregateGroup {
-  group_id: number;
-  name: string;
-  display_name: string;
-  weight: number;
-}
-
 export interface Group {
   id?: number;
   name: string;
@@ -83,9 +57,6 @@ export interface Group {
   model_redirect_strict: boolean;
   header_rules?: HeaderRule[];
   proxy_keys: string;
-  group_type?: GroupType;
-  sub_groups?: SubGroupInfo[]; // 子分组列表（仅聚合分组）
-  sub_group_ids?: number[]; // 子分组ID列表
   created_at?: string;
   updated_at?: string;
 }
@@ -164,7 +135,6 @@ export interface RequestLog {
   user_agent: string;
   request_type: "retry" | "final";
   group_name?: string;
-  parent_group_name?: string;
   key_value?: string;
   model: string;
   upstream_addr: string;
@@ -188,7 +158,6 @@ export interface LogFilter {
   page?: number;
   page_size?: number;
   group_name?: string;
-  parent_group_name?: string;
   key_value?: string;
   model?: string;
   is_success?: boolean | null;

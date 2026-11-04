@@ -85,7 +85,6 @@ interface GroupFormData {
   configItems: ConfigItem[];
   header_rules: HeaderRuleItem[];
   proxy_keys: string;
-  group_type?: string;
 }
 
 // 表单数据
@@ -111,7 +110,6 @@ const formData = reactive<GroupFormData>({
   configItems: [] as ConfigItem[],
   header_rules: [] as HeaderRuleItem[],
   proxy_keys: "",
-  group_type: "standard",
 });
 
 const keySelectionStrategyOptions = computed(() => [
@@ -337,7 +335,6 @@ function resetForm() {
     configItems: [],
     header_rules: [],
     proxy_keys: "",
-    group_type: "standard",
   });
 
   // 重置用户修改状态追踪
@@ -389,7 +386,6 @@ function loadGroupData() {
       action: (rule.action as "set" | "remove") || "set",
     })),
     proxy_keys: props.group.proxy_keys || "",
-    group_type: props.group.group_type || "standard",
   });
 }
 
@@ -563,9 +559,7 @@ async function handleSubmit() {
       description: formData.description,
       upstreams: formData.upstreams.filter((upstream: UpstreamInfo) => upstream.url.trim()),
       channel_type: formData.channel_type,
-      ...(formData.group_type !== "aggregate" && {
-        key_selection_strategy: formData.key_selection_strategy,
-      }),
+      key_selection_strategy: formData.key_selection_strategy,
       sort: formData.sort,
       test_model: formData.test_model,
       validation_endpoint: formData.validation_endpoint,
@@ -711,11 +705,7 @@ async function handleSubmit() {
             </n-form-item>
           </div>
 
-          <n-form-item
-            v-if="formData.group_type !== 'aggregate'"
-            :label="t('keys.keySelectionStrategy')"
-            path="key_selection_strategy"
-          >
+          <n-form-item :label="t('keys.keySelectionStrategy')" path="key_selection_strategy">
             <template #label>
               <div class="form-label-with-tooltip">
                 {{ t("keys.keySelectionStrategy") }}
@@ -1160,10 +1150,7 @@ async function handleSubmit() {
               </div>
 
               <!-- 模型重定向配置 -->
-              <div
-                v-if="formData.group_type !== 'aggregate' && formData.channel_type !== 'tavily'"
-                class="config-section"
-              >
+              <div v-if="formData.channel_type !== 'tavily'" class="config-section">
                 <n-form-item path="model_redirect_strict">
                   <template #label>
                     <div class="form-label-with-tooltip">

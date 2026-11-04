@@ -2,11 +2,10 @@
 import { keysApi } from "@/api/keys";
 import type { Group } from "@/types/models";
 import { getGroupDisplayName } from "@/utils/display";
-import { Add, LinkOutline, Search } from "@vicons/ionicons5";
+import { Add, Search } from "@vicons/ionicons5";
 import { NButton, NCard, NEmpty, NInput, NSpin, NTag } from "naive-ui";
 import { computed, onBeforeUpdate, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import AggregateGroupModal from "./AggregateGroupModal.vue";
 import GroupFormModal from "./GroupFormModal.vue";
 
 const { t } = useI18n();
@@ -33,7 +32,6 @@ const searchText = ref("");
 const showGroupModal = ref(false);
 // 存储分组项 DOM 元素的引用
 const groupItemRefs = ref<Map<number, HTMLElement>>(new Map());
-const showAggregateGroupModal = ref(false);
 const displayGroups = ref<Group[]>([]);
 const draggingGroupId = ref<number | null>(null);
 const dropTarget = ref<{ groupId: number; position: "before" | "after" } | null>(null);
@@ -150,13 +148,8 @@ function openCreateGroupModal() {
   showGroupModal.value = true;
 }
 
-function openCreateAggregateGroupModal() {
-  showAggregateGroupModal.value = true;
-}
-
 function handleGroupCreated(group: Group) {
   showGroupModal.value = false;
-  showAggregateGroupModal.value = false;
   if (group?.id) {
     emit("refresh-and-select", group.id);
   }
@@ -369,7 +362,6 @@ function handleDragEnd() {
               class="group-item"
               :class="{
                 active: selectedGroup?.id === group.id,
-                aggregate: group.group_type === 'aggregate',
                 dragging: draggingGroupId === group.id,
                 'drop-before':
                   dropTarget?.groupId === group.id &&
@@ -399,8 +391,7 @@ function handleDragEnd() {
                 @dragstart="handleDragStart($event, group.id)"
                 @dragend="handleDragEnd"
               >
-                <span v-if="group.group_type === 'aggregate'">🔗</span>
-                <span v-else-if="group.channel_type === 'openai'">🤖</span>
+                <span v-if="group.channel_type === 'openai'">🤖</span>
                 <span v-else-if="group.channel_type === 'openai-response'">🔁</span>
                 <span v-else-if="group.channel_type === 'gemini'">💎</span>
                 <span v-else-if="group.channel_type === 'anthropic'">🧠</span>
@@ -413,12 +404,7 @@ function handleDragEnd() {
                   <n-tag size="tiny" :type="getChannelTagType(group.channel_type)">
                     {{ group.channel_type }}
                   </n-tag>
-                  <n-tag v-if="group.group_type === 'aggregate'" size="tiny" type="warning" round>
-                    {{ t("keys.aggregateGroup") }}
-                  </n-tag>
-                  <span v-if="group.group_type !== 'aggregate'" class="group-id">
-                    #{{ group.name }}
-                  </span>
+                  <span class="group-id">#{{ group.name }}</span>
                 </div>
               </div>
               <span v-if="dragDisabledHint" :id="`drag-hint-${group.id}`" class="sr-only">
@@ -437,20 +423,9 @@ function handleDragEnd() {
           </template>
           {{ t("keys.createGroup") }}
         </n-button>
-        <n-button type="info" size="small" block @click="openCreateAggregateGroupModal">
-          <template #icon>
-            <n-icon :component="LinkOutline" />
-          </template>
-          {{ t("keys.createAggregateGroup") }}
-        </n-button>
       </div>
     </n-card>
     <group-form-modal v-model:show="showGroupModal" @success="handleGroupCreated" />
-    <aggregate-group-modal
-      v-model:show="showAggregateGroupModal"
-      :groups="groups"
-      @success="handleGroupCreated"
-    />
   </div>
 </template>
 
@@ -548,47 +523,17 @@ function handleDragEnd() {
 :root.dark .group-item.drop-after::after {
   box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
 }
-
-/* 聚合分组样式 */
-.group-item.aggregate {
-  border-style: dashed;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(102, 126, 234, 0.05) 100%);
-}
-
-:root.dark .group-item.aggregate {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(102, 126, 234, 0.1) 100%);
-  border-color: rgba(102, 126, 234, 0.2);
-}
-
-.group-item:hover,
-.group-item.aggregate:hover {
+.group-item:hover {
   background: var(--bg-tertiary);
   border-color: var(--primary-color);
-}
-
-.group-item.aggregate:hover {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(102, 126, 234, 0.1) 100%);
-  border-style: dashed;
 }
 
 :root.dark .group-item:hover {
   background: rgba(102, 126, 234, 0.1);
   border-color: rgba(102, 126, 234, 0.3);
 }
-
-:root.dark .group-item.aggregate:hover {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(102, 126, 234, 0.15) 100%);
-  border-color: rgba(102, 126, 234, 0.4);
-}
-
-.group-item.aggregate.active {
-  background: var(--primary-gradient);
-  border-style: solid;
-}
-
 .group-item.active,
-:root.dark .group-item.active,
-:root.dark .group-item.aggregate.active {
+:root.dark .group-item.active {
   background: var(--primary-gradient);
   color: white;
   border-color: transparent;

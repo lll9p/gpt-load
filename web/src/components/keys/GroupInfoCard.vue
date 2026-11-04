@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import { keysApi } from "@/api/keys";
-import type {
-  Group,
-  GroupConfigOption,
-  GroupStatsResponse,
-  ParentAggregateGroup,
-  SubGroupInfo,
-} from "@/types/models";
+import type { Group, GroupConfigOption, GroupStatsResponse } from "@/types/models";
 import { appState } from "@/utils/app-state";
 import { copy } from "@/utils/clipboard";
 import { getGroupDisplayName, maskProxyKeys } from "@/utils/display";
@@ -30,7 +24,6 @@ import {
 } from "naive-ui";
 import { computed, h, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import AggregateGroupModal from "./AggregateGroupModal.vue";
 import GroupCopyModal from "./GroupCopyModal.vue";
 import GroupFormModal from "./GroupFormModal.vue";
 
@@ -38,15 +31,12 @@ const { t } = useI18n();
 
 interface Props {
   group: Group | null;
-  groups?: Group[];
-  subGroups?: SubGroupInfo[];
 }
 
 interface Emits {
   (e: "refresh", value: Group): void;
   (e: "delete", value: Group): void;
   (e: "copy-success", group: Group): void;
-  (e: "navigate-to-group", groupId: number): void;
 }
 
 const props = defineProps<Props>();
@@ -58,13 +48,11 @@ const loading = ref(false);
 const dialog = useDialog();
 const showEditModal = ref(false);
 const showCopyModal = ref(false);
-const showAggregateEditModal = ref(false);
 const delLoading = ref(false);
 const confirmInput = ref("");
 const expandedName = ref<string[]>([]);
 const configOptions = ref<GroupConfigOption[]>([]);
 const showProxyKeys = ref(false);
-const parentAggregateGroups = ref<ParentAggregateGroup[]>([]);
 
 const proxyKeysDisplay = computed(() => {
   if (!props.group?.proxy_keys) {
@@ -84,26 +72,6 @@ const hasAdvancedConfig = computed(() => {
   );
 });
 
-// 判断是否为聚合分组
-const isAggregateGroup = computed(() => {
-  return props.group?.group_type === "aggregate";
-});
-
-// 计算有效子分组数（weight > 0 且有可用密钥）
-const activeSubGroupsCount = computed(() => {
-  return props.subGroups?.filter(sg => sg.weight > 0 && sg.active_keys > 0).length || 0;
-});
-
-// 计算禁用子分组数（weight = 0）
-const disabledSubGroupsCount = computed(() => {
-  return props.subGroups?.filter(sg => sg.weight === 0).length || 0;
-});
-
-// 计算无效子分组数（weight > 0 但无可用密钥）
-const unavailableSubGroupsCount = computed(() => {
-  return props.subGroups?.filter(sg => sg.weight > 0 && sg.active_keys === 0).length || 0;
-});
-
 async function copyProxyKeys() {
   if (!props.group?.proxy_keys) {
     return;
@@ -120,7 +88,6 @@ async function copyProxyKeys() {
 onMounted(() => {
   loadStats();
   loadConfigOptions();
-  loadParentAggregateGroups();
 });
 
 watch(
@@ -128,7 +95,6 @@ watch(
   () => {
     resetPage();
     loadStats();
-    loadParentAggregateGroups();
   }
 );
 
@@ -184,21 +150,6 @@ async function loadConfigOptions() {
   }
 }
 
-async function loadParentAggregateGroups() {
-  if (!props.group?.id || props.group.group_type === "aggregate") {
-    parentAggregateGroups.value = [];
-    return;
-  }
-
-  try {
-    const parentGroups = await keysApi.getParentAggregateGroups(props.group.id);
-    parentAggregateGroups.value = parentGroups || [];
-  } catch (error) {
-    console.error("Failed to load parent aggregate groups:", error);
-    parentAggregateGroups.value = [];
-  }
-}
-
 function getConfigDisplayName(key: string): string {
   const option = configOptions.value.find(opt => opt.key === key);
   return option?.name || key;
@@ -213,10 +164,6 @@ function handleEdit() {
   if (!props.group) {
     return;
   }
-  if (props.group.group_type === "aggregate") {
-    showAggregateEditModal.value = true;
-    return;
-  }
   showEditModal.value = true;
 }
 
@@ -224,19 +171,8 @@ function handleCopy() {
   showCopyModal.value = true;
 }
 
-function handleNavigateToGroup(groupId: number) {
-  emit("navigate-to-group", groupId);
-}
-
 function handleGroupEdited(newGroup: Group) {
   showEditModal.value = false;
-  if (newGroup) {
-    emit("refresh", newGroup);
-  }
-}
-
-function handleAggregateGroupEdited(newGroup: Group) {
-  showAggregateEditModal.value = false;
   if (newGroup) {
     emit("refresh", newGroup);
   }
@@ -354,7 +290,6 @@ function resetPage() {
           </div>
           <div class="header-actions">
             <n-button
-              v-if="group?.group_type !== 'aggregate'"
               quaternary
               circle
               size="small"
@@ -400,44 +335,7 @@ function resetPage() {
         <n-spin :show="loading" size="small">
           <n-grid cols="2 s:4" :x-gap="12" :y-gap="12" responsive="screen">
             <n-grid-item span="1">
-              <!-- 聚合分组：子分组统计 -->
-              <n-statistic
-                v-if="isAggregateGroup"
-                :label="`${t('keys.subGroups')}：${props.subGroups?.length || 0}`"
-              >
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <n-gradient-text type="success" size="20">
-                      {{ activeSubGroupsCount }}
-                    </n-gradient-text>
-                  </template>
-                  {{ t("keys.activeSubGroups") }}
-                </n-tooltip>
-                <n-divider vertical />
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <n-gradient-text type="warning" size="20">
-                      {{ disabledSubGroupsCount }}
-                    </n-gradient-text>
-                  </template>
-                  {{ t("keys.disabledSubGroups") }}
-                </n-tooltip>
-                <n-divider vertical />
-                <n-tooltip trigger="hover">
-                  <template #trigger>
-                    <n-gradient-text type="error" size="20">
-                      {{ unavailableSubGroupsCount }}
-                    </n-gradient-text>
-                  </template>
-                  {{ t("keys.unavailableSubGroups") }}
-                </n-tooltip>
-              </n-statistic>
-
-              <!-- 标准分组：密钥统计 -->
-              <n-statistic
-                v-else
-                :label="`${t('keys.keyCount')}：${stats?.key_stats?.total_keys ?? 0}`"
-              >
+              <n-statistic :label="`${t('keys.keyCount')}：${stats?.key_stats?.total_keys ?? 0}`">
                 <n-tooltip trigger="hover">
                   <template #trigger>
                     <n-gradient-text type="success" size="20">
@@ -555,7 +453,7 @@ function resetPage() {
                         {{ group?.channel_type }}
                       </n-form-item>
                     </n-grid-item>
-                    <n-grid-item v-if="!isAggregateGroup">
+                    <n-grid-item>
                       <n-form-item :label="`${t('keys.keySelectionStrategy')}：`">
                         {{
                           group?.key_selection_strategy === "fill_first"
@@ -570,12 +468,12 @@ function resetPage() {
                       </n-form-item>
                     </n-grid-item>
                     <!-- 标准分组才显示测试模型和测试路径 -->
-                    <n-grid-item v-if="!isAggregateGroup && group?.channel_type !== 'tavily'">
+                    <n-grid-item v-if="group?.channel_type !== 'tavily'">
                       <n-form-item :label="`${t('keys.testModel')}：`">
                         {{ group?.test_model }}
                       </n-form-item>
                     </n-grid-item>
-                    <n-grid-item v-if="!isAggregateGroup && group?.channel_type !== 'gemini'">
+                    <n-grid-item v-if="group?.channel_type !== 'gemini'">
                       <n-form-item :label="`${t('keys.testPath')}：`">
                         {{
                           group?.channel_type === "tavily" ? "/search" : group?.validation_endpoint
@@ -624,50 +522,8 @@ function resetPage() {
                 </n-form>
               </div>
 
-              <!-- 聚合引用区（仅普通分组且存在被引用关系时显示） -->
-              <div
-                class="detail-section"
-                v-if="!isAggregateGroup && parentAggregateGroups.length > 0"
-              >
-                <h4 class="section-title">{{ t("keys.aggregateReferences") }}</h4>
-                <n-form label-placement="left" label-width="140px">
-                  <n-form-item
-                    v-for="(parent, index) in parentAggregateGroups"
-                    :key="parent.group_id"
-                    class="aggregate-ref-item"
-                    :label="`${t('keys.aggregateGroup')} ${index + 1}:`"
-                  >
-                    <span class="aggregate-weight">
-                      <n-tag size="small" type="info">
-                        {{ t("keys.weight") }}: {{ parent.weight }}
-                      </n-tag>
-                    </span>
-                    <n-input
-                      class="aggregate-name"
-                      :value="parent.display_name || parent.name"
-                      readonly
-                      size="small"
-                      style="margin-left: 5px; margin-right: 8px"
-                    />
-                    <n-button
-                      round
-                      tertiary
-                      type="default"
-                      size="tiny"
-                      @click="handleNavigateToGroup(parent.group_id)"
-                      :title="t('keys.viewGroupInfo')"
-                    >
-                      <template #icon>
-                        <n-icon :component="EyeOutline" />
-                      </template>
-                      {{ t("common.view") }}
-                    </n-button>
-                  </n-form-item>
-                </n-form>
-              </div>
-
               <!-- 标准分组才显示上游地址 -->
-              <div class="detail-section" v-if="!isAggregateGroup">
+              <div class="detail-section">
                 <h4 class="section-title">{{ t("keys.upstreamAddresses") }}</h4>
                 <n-form label-placement="left" label-width="140px">
                   <n-form-item
@@ -687,7 +543,7 @@ function resetPage() {
               </div>
 
               <!-- 标准分组才显示高级配置 -->
-              <div class="detail-section" v-if="!isAggregateGroup && hasAdvancedConfig">
+              <div class="detail-section" v-if="hasAdvancedConfig">
                 <h4 class="section-title">{{ t("keys.advancedConfig") }}</h4>
                 <n-form label-placement="left">
                   <n-form-item v-for="(value, key) in group?.config || {}" :key="key">
@@ -780,12 +636,6 @@ function resetPage() {
     </n-card>
 
     <group-form-modal v-model:show="showEditModal" :group="group" @success="handleGroupEdited" />
-    <aggregate-group-modal
-      v-model:show="showAggregateEditModal"
-      :group="group"
-      :groups="props.groups"
-      @success="handleAggregateGroupEdited"
-    />
     <group-copy-modal
       v-model:show="showCopyModal"
       :source-group="group"
@@ -944,18 +794,6 @@ function resetPage() {
   min-height: 20px;
   color: var(--text-primary);
 }
-
-.aggregate-weight {
-  min-width: 70px;
-}
-
-.aggregate-name {
-  font-family: monospace;
-  font-size: 0.9rem;
-  color: var(--text-primary);
-  width: 200px;
-}
-
 .proxy-keys-content {
   display: flex;
   align-items: flex-start;

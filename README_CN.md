@@ -597,3 +597,7 @@ MIT 许可证 - 详情请参阅 [LICENSE](LICENSE) 文件。
 ## Star History
 
 [![Stargazers over time](https://starchart.cc/tbphp/gpt-load.svg?variant=adaptive)](https://starchart.cc/tbphp/gpt-load)
+
+## 升级说明
+
+聚合分组入口及父聚合日志字段已退役，普通分组、API 密钥和实际请求记录保留，父组重复统计会被清理。升级旧库前请备份数据库。若聚合组自身挂有密钥，迁移会停止：请先导出密钥并迁入普通分组。旧客户端需改用普通分组入口；回退需要数据库备份。

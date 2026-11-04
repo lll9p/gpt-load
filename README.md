@@ -597,3 +597,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Star History
 
 [![Stargazers over time](https://starchart.cc/tbphp/gpt-load.svg?variant=adaptive)](https://starchart.cc/tbphp/gpt-load)
+
+## Upgrade notes
+
+Aggregate group entry points and parent-aggregate log fields have been retired. Ordinary groups, API keys, and actual request records are retained; duplicate parent-group statistics are removed. Back up the database before upgrading. Migration stops if an aggregate group owns API keys: export them and move them into an ordinary group first. Older clients must use ordinary group entry points. Rolling back requires a database backup.

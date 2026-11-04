@@ -57,7 +57,7 @@ func NewApp(buildFS embed.FS, indexPage []byte) (_ *App, err error) {
 		return nil, err
 	}
 	if err := database.AutoMigrate(
-		&models.SystemSetting{}, &models.Group{}, &models.GroupSubGroup{},
+		&models.SystemSetting{}, &models.Group{},
 		&models.APIKey{}, &models.RequestLog{}, &models.GroupHourlyStat{},
 	); err != nil {
 		return nil, fmt.Errorf("database schema migration failed: %w", err)
@@ -76,7 +76,7 @@ func NewApp(buildFS embed.FS, indexPage []byte) (_ *App, err error) {
 	if err := provider.LoadKeysFromDB(); err != nil {
 		return nil, err
 	}
-	groups := services.NewGroupManager(database, settings, provider)
+	groups := services.NewGroupManager(database, settings)
 	if err := groups.Initialize(); err != nil {
 		return nil, fmt.Errorf("failed to load group snapshot: %w", err)
 	}

@@ -50,7 +50,6 @@ type GroupCreateRequest struct {
 	Name                 string              `json:"name"`
 	DisplayName          string              `json:"display_name"`
 	Description          string              `json:"description"`
-	GroupType            string              `json:"group_type"` // 'standard' or 'aggregate'
 	KeySelectionStrategy json.RawMessage     `json:"key_selection_strategy"`
 	Upstreams            json.RawMessage     `json:"upstreams"`
 	ChannelType          string              `json:"channel_type"`
@@ -93,7 +92,6 @@ func (s *Server) CreateGroup(c *gin.Context) {
 		Name:                 req.Name,
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
-		GroupType:            req.GroupType,
 		KeySelectionStrategy: keySelectionStrategy,
 		Upstreams:            req.Upstreams,
 		ChannelType:          req.ChannelType,
@@ -145,7 +143,6 @@ type GroupUpdateRequest struct {
 	Name                 *string             `json:"name,omitempty"`
 	DisplayName          *string             `json:"display_name,omitempty"`
 	Description          *string             `json:"description,omitempty"`
-	GroupType            *string             `json:"group_type,omitempty"`
 	KeySelectionStrategy json.RawMessage     `json:"key_selection_strategy,omitempty"`
 	Upstreams            json.RawMessage     `json:"upstreams"`
 	ChannelType          *string             `json:"channel_type,omitempty"`
@@ -214,7 +211,6 @@ func (s *Server) UpdateGroup(c *gin.Context) {
 		Name:                 req.Name,
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
-		GroupType:            req.GroupType,
 		KeySelectionStrategy: keySelectionStrategy,
 		ChannelType:          req.ChannelType,
 		Sort:                 req.Sort,
@@ -287,7 +283,6 @@ type GroupResponse struct {
 	Endpoint             string              `json:"endpoint"`
 	DisplayName          string              `json:"display_name"`
 	Description          string              `json:"description"`
-	GroupType            string              `json:"group_type"`
 	KeySelectionStrategy string              `json:"key_selection_strategy"`
 	Upstreams            json.RawMessage     `json:"upstreams"`
 	ChannelType          string              `json:"channel_type"`
@@ -332,7 +327,6 @@ func (s *Server) newGroupResponse(group *models.Group) (*GroupResponse, error) {
 		Endpoint:             endpoint,
 		DisplayName:          group.DisplayName,
 		Description:          group.Description,
-		GroupType:            group.GroupType,
 		KeySelectionStrategy: group.KeySelectionStrategy,
 		Upstreams:            json.RawMessage(group.Upstreams),
 		ChannelType:          group.ChannelType,
@@ -467,115 +461,4 @@ func (s *Server) List(c *gin.Context) {
 		return
 	}
 	response.Success(c, groups)
-}
-
-// AddSubGroupsRequest defines the payload for adding sub groups to an aggregate group
-type AddSubGroupsRequest struct {
-	SubGroups []services.SubGroupInput `json:"sub_groups"`
-}
-
-// UpdateSubGroupWeightRequest defines the payload for updating a sub group weight
-type UpdateSubGroupWeightRequest struct {
-	Weight int `json:"weight"`
-}
-
-// GetSubGroups handles getting sub groups of an aggregate group
-func (s *Server) GetSubGroups(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		response.ErrorI18nFromAPIError(c, app_errors.ErrBadRequest, "validation.invalid_group_id")
-		return
-	}
-
-	subGroups, err := s.GroupService.GetSubGroups(c.Request.Context(), uint(id))
-	if s.handleGroupError(c, err) {
-		return
-	}
-
-	response.Success(c, subGroups)
-}
-
-// AddSubGroups handles adding sub groups to an aggregate group
-func (s *Server) AddSubGroups(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		response.ErrorI18nFromAPIError(c, app_errors.ErrBadRequest, "validation.invalid_group_id")
-		return
-	}
-
-	var req AddSubGroupsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, app_errors.NewAPIError(app_errors.ErrInvalidJSON, err.Error()))
-		return
-	}
-
-	if err := s.GroupService.AddSubGroups(c.Request.Context(), uint(id), req.SubGroups); s.handleGroupError(c, err) {
-		return
-	}
-
-	response.SuccessI18n(c, "success.sub_groups_added", nil)
-}
-
-// UpdateSubGroupWeight handles updating the weight of a sub group
-func (s *Server) UpdateSubGroupWeight(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		response.ErrorI18nFromAPIError(c, app_errors.ErrBadRequest, "validation.invalid_group_id")
-		return
-	}
-
-	subGroupID, err := strconv.Atoi(c.Param("subGroupId"))
-	if err != nil {
-		response.ErrorI18nFromAPIError(c, app_errors.ErrBadRequest, "validation.invalid_sub_group_id")
-		return
-	}
-
-	var req UpdateSubGroupWeightRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, app_errors.NewAPIError(app_errors.ErrInvalidJSON, err.Error()))
-		return
-	}
-
-	if err := s.GroupService.UpdateSubGroupWeight(c.Request.Context(), uint(id), uint(subGroupID), req.Weight); s.handleGroupError(c, err) {
-		return
-	}
-
-	response.SuccessI18n(c, "success.sub_group_weight_updated", nil)
-}
-
-// DeleteSubGroup handles deleting a sub group from an aggregate group
-func (s *Server) DeleteSubGroup(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		response.ErrorI18nFromAPIError(c, app_errors.ErrBadRequest, "validation.invalid_group_id")
-		return
-	}
-
-	subGroupID, err := strconv.Atoi(c.Param("subGroupId"))
-	if err != nil {
-		response.ErrorI18nFromAPIError(c, app_errors.ErrBadRequest, "validation.invalid_sub_group_id")
-		return
-	}
-
-	if err := s.GroupService.DeleteSubGroup(c.Request.Context(), uint(id), uint(subGroupID)); s.handleGroupError(c, err) {
-		return
-	}
-
-	response.SuccessI18n(c, "success.sub_group_deleted", nil)
-}
-
-// GetParentAggregateGroups handles getting parent aggregate groups that reference a group
-func (s *Server) GetParentAggregateGroups(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		response.ErrorI18nFromAPIError(c, app_errors.ErrBadRequest, "validation.invalid_group_id")
-		return
-	}
-
-	parentGroups, err := s.GroupService.GetParentAggregateGroups(c.Request.Context(), uint(id))
-	if s.handleGroupError(c, err) {
-		return
-	}
-
-	response.Success(c, parentGroups)
 }

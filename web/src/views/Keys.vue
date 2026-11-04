@@ -4,16 +4,13 @@ import EncryptionMismatchAlert from "@/components/EncryptionMismatchAlert.vue";
 import GroupInfoCard from "@/components/keys/GroupInfoCard.vue";
 import GroupList from "@/components/keys/GroupList.vue";
 import KeyTable from "@/components/keys/KeyTable.vue";
-import SubGroupTable from "@/components/keys/SubGroupTable.vue";
-import type { Group, SubGroupInfo } from "@/types/models";
-import { onMounted, ref, watch } from "vue";
+import type { Group } from "@/types/models";
+import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 const groups = ref<Group[]>([]);
 const loading = ref(false);
 const selectedGroup = ref<Group | null>(null);
-const subGroups = ref<SubGroupInfo[]>([]);
-const loadingSubGroups = ref(false);
 const router = useRouter();
 const route = useRoute();
 
@@ -43,33 +40,6 @@ async function loadGroups() {
   }
 }
 
-async function loadSubGroups() {
-  if (!selectedGroup.value?.id || selectedGroup.value.group_type !== "aggregate") {
-    subGroups.value = [];
-    return;
-  }
-
-  try {
-    loadingSubGroups.value = true;
-    subGroups.value = await keysApi.getSubGroups(selectedGroup.value.id);
-  } catch (error) {
-    console.error("Failed to load sub groups:", error);
-    window.$message?.error("加载子分组失败");
-    subGroups.value = [];
-  } finally {
-    loadingSubGroups.value = false;
-  }
-}
-
-// 监听选中分组变化，加载子分组数据
-watch(selectedGroup, async newGroup => {
-  if (newGroup?.group_type === "aggregate") {
-    await loadSubGroups();
-  } else {
-    subGroups.value = [];
-  }
-});
-
 function handleGroupSelect(group: Group | null) {
   selectedGroup.value = group || null;
   if (String(group?.id) !== String(route.query.groupId)) {
@@ -92,31 +62,12 @@ async function refreshGroupsAndSelect(targetGroupId?: number, selectFirst = true
     const currentGroup = groups.value.find(g => g.id === selectedGroup.value?.id);
     if (currentGroup) {
       handleGroupSelect(currentGroup);
-      if (currentGroup.group_type === "aggregate") {
-        await loadSubGroups();
-      }
       return;
     }
   }
 
   if (selectFirst && groups.value.length > 0) {
     handleGroupSelect(groups.value[0]);
-  }
-}
-
-// 处理子分组选择，跳转到对应的分组
-function handleSubGroupSelect(groupId: number) {
-  const targetGroup = groups.value.find(g => g.id === groupId);
-  if (targetGroup) {
-    handleGroupSelect(targetGroup);
-  }
-}
-
-// 处理聚合分组跳转，跳转到对应的聚合分组
-function handleNavigateToGroup(groupId: number) {
-  const targetGroup = groups.value.find(g => g.id === groupId);
-  if (targetGroup) {
-    handleGroupSelect(targetGroup);
   }
 }
 </script>
@@ -144,33 +95,14 @@ function handleNavigateToGroup(groupId: number) {
         <div class="group-info">
           <group-info-card
             :group="selectedGroup"
-            :groups="groups"
-            :sub-groups="subGroups"
             @refresh="() => refreshGroupsAndSelect()"
             @delete="() => refreshGroupsAndSelect(undefined, true)"
             @copy-success="group => refreshGroupsAndSelect(group.id)"
-            @navigate-to-group="handleNavigateToGroup"
           />
         </div>
 
-        <!-- 密钥表格区域 / 子分组列表区域 -->
         <div class="key-table-section">
-          <!-- 标准分组显示密钥列表 -->
-          <key-table
-            v-if="!selectedGroup || selectedGroup.group_type !== 'aggregate'"
-            :selected-group="selectedGroup"
-          />
-
-          <!-- 聚合分组显示子分组列表 -->
-          <sub-group-table
-            v-else
-            :selected-group="selectedGroup"
-            :sub-groups="subGroups"
-            :groups="groups"
-            :loading="loadingSubGroups"
-            @refresh="loadSubGroups"
-            @group-select="handleSubGroupSelect"
-          />
+          <key-table :selected-group="selectedGroup" />
         </div>
       </div>
     </div>

@@ -109,16 +109,6 @@ func (p *KeyProvider) SelectKey(groupID uint, strategy string, excluded map[uint
 	return &key, nil
 }
 
-func (p *KeyProvider) HasActiveKeys(groupID uint) bool {
-	pool := p.pool(groupID, false)
-	if pool == nil {
-		return false
-	}
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-	return !pool.removed && pool.active.Len() > 0
-}
-
 // UpdateStatus persists and publishes changes under the group's lock.
 func (p *KeyProvider) UpdateStatus(apiKey *models.APIKey, group *models.Group, isSuccess bool, errorMessage string) {
 	if !isSuccess && app_errors.IsUnCounted(errorMessage) {

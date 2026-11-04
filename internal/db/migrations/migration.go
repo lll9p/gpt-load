@@ -10,7 +10,10 @@ func MigrateDatabase(db *gorm.DB) error {
 	if err := V1_0_22_DropRetriesColumn(db); err != nil {
 		return err
 	}
-	return V1_1_0_AddKeyHashColumn(db)
+	if err := V1_1_0_AddKeyHashColumn(db); err != nil {
+		return err
+	}
+	return RetireAggregateGroups(db)
 }
 
 // HandleLegacyIndexes removes indexes left by previous versions.
