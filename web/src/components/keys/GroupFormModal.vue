@@ -2,7 +2,13 @@
 import { keysApi } from "@/api/keys";
 import { settingsApi } from "@/api/settings";
 import ProxyKeysInput from "@/components/common/ProxyKeysInput.vue";
-import type { ChannelType, Group, GroupConfigOption, UpstreamInfo } from "@/types/models";
+import type {
+  ChannelType,
+  Group,
+  GroupConfigOption,
+  KeySelectionStrategy,
+  UpstreamInfo,
+} from "@/types/models";
 import { Add, Close, HelpCircleOutline, Remove } from "@vicons/ionicons5";
 import {
   NButton,
@@ -68,6 +74,7 @@ interface GroupFormData {
   description: string;
   upstreams: UpstreamInfo[];
   channel_type: ChannelType;
+  key_selection_strategy: KeySelectionStrategy;
   sort: number;
   test_model: string;
   validation_endpoint: string;
@@ -93,6 +100,7 @@ const formData = reactive<GroupFormData>({
     },
   ] as UpstreamInfo[],
   channel_type: "openai",
+  key_selection_strategy: "round_robin",
   sort: 1,
   test_model: "",
   validation_endpoint: "",
@@ -105,6 +113,11 @@ const formData = reactive<GroupFormData>({
   proxy_keys: "",
   group_type: "standard",
 });
+
+const keySelectionStrategyOptions = computed(() => [
+  { label: t("keys.keySelectionRoundRobin"), value: "round_robin" },
+  { label: t("keys.keySelectionFillFirst"), value: "fill_first" },
+]);
 
 const channelTypeOptions = ref<{ label: string; value: string }[]>([]);
 const configOptions = ref<GroupConfigOption[]>([]);
@@ -313,6 +326,7 @@ function resetForm() {
       },
     ],
     channel_type: defaultChannelType,
+    key_selection_strategy: "round_robin",
     sort: 1,
     test_model: isCreateMode ? testModelPlaceholder.value : "",
     validation_endpoint: "",
@@ -355,6 +369,7 @@ function loadGroupData() {
       ? [...props.group.upstreams]
       : [{ url: "", weight: 1 }],
     channel_type: props.group.channel_type || "openai",
+    key_selection_strategy: props.group.key_selection_strategy ?? "round_robin",
     sort: props.group.sort || 1,
     test_model: props.group.channel_type === "tavily" ? "" : props.group.test_model || "",
     validation_endpoint:
@@ -548,6 +563,9 @@ async function handleSubmit() {
       description: formData.description,
       upstreams: formData.upstreams.filter((upstream: UpstreamInfo) => upstream.url.trim()),
       channel_type: formData.channel_type,
+      ...(formData.group_type !== "aggregate" && {
+        key_selection_strategy: formData.key_selection_strategy,
+      }),
       sort: formData.sort,
       test_model: formData.test_model,
       validation_endpoint: formData.validation_endpoint,
@@ -692,6 +710,28 @@ async function handleSubmit() {
               />
             </n-form-item>
           </div>
+
+          <n-form-item
+            v-if="formData.group_type !== 'aggregate'"
+            :label="t('keys.keySelectionStrategy')"
+            path="key_selection_strategy"
+          >
+            <template #label>
+              <div class="form-label-with-tooltip">
+                {{ t("keys.keySelectionStrategy") }}
+                <n-tooltip trigger="hover" placement="top">
+                  <template #trigger>
+                    <n-icon :component="HelpCircleOutline" class="help-icon" />
+                  </template>
+                  {{ t("keys.keySelectionStrategyTooltip") }}
+                </n-tooltip>
+              </div>
+            </template>
+            <n-select
+              v-model:value="formData.key_selection_strategy"
+              :options="keySelectionStrategyOptions"
+            />
+          </n-form-item>
 
           <!-- Test model and test path on the same row -->
           <div class="form-row">

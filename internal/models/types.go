@@ -12,6 +12,11 @@ const (
 	KeyStatusInvalid = "invalid"
 )
 
+const (
+	KeySelectionRoundRobin = "round_robin"
+	KeySelectionFillFirst  = "fill_first"
+)
+
 // SystemSetting 对应 system_settings 表
 type SystemSetting struct {
 	ID           uint      `gorm:"primaryKey;autoIncrement" json:"id"`
@@ -79,29 +84,30 @@ type ParentAggregateGroupInfo struct {
 
 // Group 对应 groups 表
 type Group struct {
-	ID                  uint                 `gorm:"primaryKey;autoIncrement" json:"id"`
-	EffectiveConfig     types.SystemSettings `gorm:"-" json:"effective_config,omitempty"`
-	Name                string               `gorm:"type:varchar(255);not null;unique" json:"name"`
-	Endpoint            string               `gorm:"-" json:"endpoint"`
-	DisplayName         string               `gorm:"type:varchar(255)" json:"display_name"`
-	ProxyKeys           string               `gorm:"type:text" json:"proxy_keys"`
-	Description         string               `gorm:"type:varchar(512)" json:"description"`
-	GroupType           string               `gorm:"type:varchar(50);default:'standard'" json:"group_type"` // 'standard' or 'aggregate'
-	Upstreams           JSON                 `gorm:"type:json;serializer:json;not null" json:"upstreams"`
-	ValidationEndpoint  string               `gorm:"type:varchar(255)" json:"validation_endpoint"`
-	ChannelType         string               `gorm:"type:varchar(50);not null" json:"channel_type"`
-	Sort                int                  `gorm:"default:0" json:"sort"`
-	TestModel           string               `gorm:"type:varchar(255);not null" json:"test_model"`
-	ParamOverrides      JSONMap              `gorm:"type:json;serializer:json" json:"param_overrides"`
-	Config              JSONMap              `gorm:"type:json;serializer:json" json:"config"`
-	HeaderRules         JSON                 `gorm:"type:json;serializer:json" json:"header_rules"`
-	ModelRedirectRules  JSONMap              `gorm:"type:json;serializer:json" json:"model_redirect_rules"`
-	ModelRedirectStrict bool                 `gorm:"default:false" json:"model_redirect_strict"`
-	APIKeys             []APIKey             `gorm:"foreignKey:GroupID" json:"api_keys"`
-	SubGroups           []GroupSubGroup      `gorm:"-" json:"sub_groups,omitempty"`
-	LastValidatedAt     *time.Time           `json:"last_validated_at"`
-	CreatedAt           time.Time            `json:"created_at"`
-	UpdatedAt           time.Time            `json:"updated_at"`
+	ID                   uint                 `gorm:"primaryKey;autoIncrement" json:"id"`
+	EffectiveConfig      types.SystemSettings `gorm:"-" json:"effective_config,omitempty"`
+	Name                 string               `gorm:"type:varchar(255);not null;unique" json:"name"`
+	Endpoint             string               `gorm:"-" json:"endpoint"`
+	DisplayName          string               `gorm:"type:varchar(255)" json:"display_name"`
+	ProxyKeys            string               `gorm:"type:text" json:"proxy_keys"`
+	Description          string               `gorm:"type:varchar(512)" json:"description"`
+	GroupType            string               `gorm:"type:varchar(50);default:'standard'" json:"group_type"` // 'standard' or 'aggregate'
+	KeySelectionStrategy string               `gorm:"type:varchar(50);not null;default:'round_robin'" json:"key_selection_strategy"`
+	Upstreams            JSON                 `gorm:"type:json;serializer:json;not null" json:"upstreams"`
+	ValidationEndpoint   string               `gorm:"type:varchar(255)" json:"validation_endpoint"`
+	ChannelType          string               `gorm:"type:varchar(50);not null" json:"channel_type"`
+	Sort                 int                  `gorm:"default:0" json:"sort"`
+	TestModel            string               `gorm:"type:varchar(255);not null" json:"test_model"`
+	ParamOverrides       JSONMap              `gorm:"type:json;serializer:json" json:"param_overrides"`
+	Config               JSONMap              `gorm:"type:json;serializer:json" json:"config"`
+	HeaderRules          JSON                 `gorm:"type:json;serializer:json" json:"header_rules"`
+	ModelRedirectRules   JSONMap              `gorm:"type:json;serializer:json" json:"model_redirect_rules"`
+	ModelRedirectStrict  bool                 `gorm:"default:false" json:"model_redirect_strict"`
+	APIKeys              []APIKey             `gorm:"foreignKey:GroupID" json:"api_keys"`
+	SubGroups            []GroupSubGroup      `gorm:"-" json:"sub_groups,omitempty"`
+	LastValidatedAt      *time.Time           `json:"last_validated_at"`
+	CreatedAt            time.Time            `json:"created_at"`
+	UpdatedAt            time.Time            `json:"updated_at"`
 
 	// For cache
 	ProxyKeysMap              map[string]struct{}        `gorm:"-" json:"-"`

@@ -78,44 +78,46 @@ func NewGroupService(
 
 // GroupCreateParams captures all fields required to create a group.
 type GroupCreateParams struct {
-	Name                string
-	DisplayName         string
-	Description         string
-	GroupType           string
-	Upstreams           json.RawMessage
-	ChannelType         string
-	Sort                int
-	TestModel           string
-	ValidationEndpoint  string
-	ParamOverrides      map[string]any
-	ModelRedirectRules  map[string]string
-	ModelRedirectStrict bool
-	Config              map[string]any
-	HeaderRules         []models.HeaderRule
-	ProxyKeys           string
-	SubGroups           []SubGroupInput
+	Name                 string
+	DisplayName          string
+	Description          string
+	GroupType            string
+	KeySelectionStrategy *string
+	Upstreams            json.RawMessage
+	ChannelType          string
+	Sort                 int
+	TestModel            string
+	ValidationEndpoint   string
+	ParamOverrides       map[string]any
+	ModelRedirectRules   map[string]string
+	ModelRedirectStrict  bool
+	Config               map[string]any
+	HeaderRules          []models.HeaderRule
+	ProxyKeys            string
+	SubGroups            []SubGroupInput
 }
 
 // GroupUpdateParams captures updatable fields for a group.
 type GroupUpdateParams struct {
-	Name                *string
-	DisplayName         *string
-	Description         *string
-	GroupType           *string
-	Upstreams           json.RawMessage
-	HasUpstreams        bool
-	ChannelType         *string
-	Sort                *int
-	TestModel           string
-	HasTestModel        bool
-	ValidationEndpoint  *string
-	ParamOverrides      map[string]any
-	ModelRedirectRules  map[string]string
-	ModelRedirectStrict *bool
-	Config              map[string]any
-	HeaderRules         *[]models.HeaderRule
-	ProxyKeys           *string
-	SubGroups           *[]SubGroupInput
+	Name                 *string
+	DisplayName          *string
+	Description          *string
+	GroupType            *string
+	KeySelectionStrategy *string
+	Upstreams            json.RawMessage
+	HasUpstreams         bool
+	ChannelType          *string
+	Sort                 *int
+	TestModel            string
+	HasTestModel         bool
+	ValidationEndpoint   *string
+	ParamOverrides       map[string]any
+	ModelRedirectRules   map[string]string
+	ModelRedirectStrict  *bool
+	Config               map[string]any
+	HeaderRules          *[]models.HeaderRule
+	ProxyKeys            *string
+	SubGroups            *[]SubGroupInput
 }
 
 // GroupReorderItem captures a group ID and target sort value.
@@ -173,6 +175,14 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 	}
 	if groupType != "standard" && groupType != "aggregate" {
 		return nil, NewI18nError(app_errors.ErrValidation, "validation.invalid_group_type", nil)
+	}
+
+	keySelectionStrategy := models.KeySelectionRoundRobin
+	if params.KeySelectionStrategy != nil {
+		if err := validateKeySelectionStrategy(*params.KeySelectionStrategy, groupType); err != nil {
+			return nil, err
+		}
+		keySelectionStrategy = *params.KeySelectionStrategy
 	}
 
 	var cleanedUpstreams json.RawMessage
@@ -240,21 +250,22 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 	}
 
 	group := models.Group{
-		Name:                name,
-		DisplayName:         strings.TrimSpace(params.DisplayName),
-		Description:         strings.TrimSpace(params.Description),
-		GroupType:           groupType,
-		Upstreams:           models.JSON(cleanedUpstreams),
-		ChannelType:         channelType,
-		Sort:                params.Sort,
-		TestModel:           testModel,
-		ValidationEndpoint:  validationEndpoint,
-		ParamOverrides:      models.JSONMap(params.ParamOverrides),
-		ModelRedirectRules:  models.JSONMap(convertToJSONMap(params.ModelRedirectRules)),
-		ModelRedirectStrict: params.ModelRedirectStrict,
-		Config:              models.JSONMap(cleanedConfig),
-		HeaderRules:         models.JSON(headerRulesJSON),
-		ProxyKeys:           strings.TrimSpace(params.ProxyKeys),
+		Name:                 name,
+		DisplayName:          strings.TrimSpace(params.DisplayName),
+		Description:          strings.TrimSpace(params.Description),
+		GroupType:            groupType,
+		KeySelectionStrategy: keySelectionStrategy,
+		Upstreams:            models.JSON(cleanedUpstreams),
+		ChannelType:          channelType,
+		Sort:                 params.Sort,
+		TestModel:            testModel,
+		ValidationEndpoint:   validationEndpoint,
+		ParamOverrides:       models.JSONMap(params.ParamOverrides),
+		ModelRedirectRules:   models.JSONMap(convertToJSONMap(params.ModelRedirectRules)),
+		ModelRedirectStrict:  params.ModelRedirectStrict,
+		Config:               models.JSONMap(cleanedConfig),
+		HeaderRules:          models.JSON(headerRulesJSON),
+		ProxyKeys:            strings.TrimSpace(params.ProxyKeys),
 	}
 
 	tx := s.db.WithContext(ctx).Begin()
@@ -367,6 +378,14 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		return nil, app_errors.ParseDBError(err)
 	}
 	changedFields := []string{"updated_at"}
+
+	if params.KeySelectionStrategy != nil {
+		if err := validateKeySelectionStrategy(*params.KeySelectionStrategy, group.GroupType); err != nil {
+			return nil, err
+		}
+		group.KeySelectionStrategy = *params.KeySelectionStrategy
+		changedFields = append(changedFields, "key_selection_strategy")
+	}
 
 	if params.Name != nil {
 		cleanedName := strings.TrimSpace(*params.Name)
@@ -1044,6 +1063,16 @@ func (s *GroupService) generateUniqueGroupName(db *gorm.DB, baseName string) (st
 	}
 
 	return "", fmt.Errorf("no available copy name for group %s", baseName)
+}
+
+func validateKeySelectionStrategy(strategy, groupType string) error {
+	if strategy != models.KeySelectionRoundRobin && strategy != models.KeySelectionFillFirst {
+		return app_errors.NewAPIError(app_errors.ErrValidation, "key_selection_strategy must be round_robin or fill_first")
+	}
+	if groupType == "aggregate" && strategy == models.KeySelectionFillFirst {
+		return app_errors.NewAPIError(app_errors.ErrValidation, "aggregate groups do not support fill_first")
+	}
+	return nil
 }
 
 // isValidGroupName validates the group name.

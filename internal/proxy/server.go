@@ -107,7 +107,7 @@ func (ps *ProxyServer) HandleProxy(c *gin.Context) {
 	}
 	isStream := channelHandler.IsStreamRequest(c, streamBody)
 	excluded := map[uint]bool(nil)
-	if group.ChannelType == "tavily" {
+	if group.ChannelType == "tavily" || group.KeySelectionStrategy == models.KeySelectionFillFirst {
 		excluded = make(map[uint]bool)
 	}
 
@@ -132,7 +132,7 @@ func (ps *ProxyServer) executeRequestWithRetry(
 	apiKey := selectedKey
 	var err error
 	if apiKey == nil {
-		apiKey, err = ps.keyProvider.SelectKey(group.ID, excluded)
+		apiKey, err = ps.keyProvider.SelectKey(group.ID, group.KeySelectionStrategy, excluded)
 	}
 	if err != nil {
 		logrus.Errorf("Failed to select a key for group %s on attempt %d: %v", group.Name, retryCount+1, err)
@@ -265,7 +265,7 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		if excluded != nil {
 			excluded[apiKey.ID] = true
 			if !isLastAttempt {
-				nextKey, _ = ps.keyProvider.SelectKey(group.ID, excluded)
+				nextKey, _ = ps.keyProvider.SelectKey(group.ID, group.KeySelectionStrategy, excluded)
 				isLastAttempt = nextKey == nil
 			}
 		}

@@ -228,6 +228,11 @@ export default {
     basicInfo: "基础信息",
     displayName: "显示名称",
     channelType: "渠道类型",
+    keySelectionStrategy: "Key 选择策略",
+    keySelectionRoundRobin: "轮询（默认）",
+    keySelectionFillFirst: "填充（Fill-first）",
+    keySelectionStrategyTooltip:
+      "轮询均匀分配请求；填充持续使用首个可用 Key，直到其不可用。不保证跨重启或 Key 切换的 Research 任务亲和性。",
     sortOrder: "排序",
     testModel: "测试模型",
     testPath: "测试路径",

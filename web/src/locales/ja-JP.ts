@@ -231,6 +231,11 @@ export default {
     basicInfo: "基本情報",
     displayName: "表示名",
     channelType: "チャンネルタイプ",
+    keySelectionStrategy: "キー選択方式",
+    keySelectionRoundRobin: "ラウンドロビン（デフォルト）",
+    keySelectionFillFirst: "Fill-first（優先使用）",
+    keySelectionStrategyTooltip:
+      "ラウンドロビンはリクエストを均等に分散します。Fill-first は最初の利用可能なキーを、利用できなくなるまで使い続けます。再起動やキーの切り替えをまたぐ Research タスクのキー固定は保証されません。",
     sortOrder: "並び順",
     testModel: "テストモデル",
     testPath: "テストパス",

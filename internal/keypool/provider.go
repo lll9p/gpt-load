@@ -77,7 +77,7 @@ func (pool *groupPool) remove(keyID uint) {
 	}
 }
 
-func (p *KeyProvider) SelectKey(groupID uint, excluded map[uint]bool) (*models.APIKey, error) {
+func (p *KeyProvider) SelectKey(groupID uint, strategy string, excluded map[uint]bool) (*models.APIKey, error) {
 	pool := p.pool(groupID, false)
 	if pool == nil {
 		return nil, app_errors.ErrNoActiveKeys
@@ -96,7 +96,9 @@ func (p *KeyProvider) SelectKey(groupID uint, excluded map[uint]bool) (*models.A
 		return nil, app_errors.ErrNoActiveKeys
 	}
 	key := pool.keys[element.Value.(uint)].key
-	pool.active.MoveToBack(element)
+	if strategy == models.KeySelectionRoundRobin {
+		pool.active.MoveToBack(element)
+	}
 	pool.mu.Unlock()
 
 	value, err := p.encryptionSvc.Decrypt(key.KeyValue)

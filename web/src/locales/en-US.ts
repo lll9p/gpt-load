@@ -232,6 +232,11 @@ export default {
     basicInfo: "Basic Information",
     displayName: "Display Name",
     channelType: "Channel Type",
+    keySelectionStrategy: "Key Selection Strategy",
+    keySelectionRoundRobin: "Round-robin (default)",
+    keySelectionFillFirst: "Fill-first",
+    keySelectionStrategyTooltip:
+      "Round-robin distributes requests evenly. Fill-first keeps using the first available key until it becomes unavailable. Research task affinity is not guaranteed across restarts or key changes.",
     sortOrder: "Sort Order",
     testModel: "Test Model",
     testPath: "Test Path",

@@ -11,6 +11,8 @@ export type KeyStatus = "active" | "invalid" | undefined;
 // 分组类型
 export type GroupType = "standard" | "aggregate";
 
+export type KeySelectionStrategy = "round_robin" | "fill_first";
+
 // 渠道类型
 export type ChannelType = "openai" | "openai-response" | "gemini" | "anthropic" | "tavily";
 
@@ -70,6 +72,7 @@ export interface Group {
   sort: number;
   test_model: string;
   channel_type: ChannelType;
+  key_selection_strategy?: KeySelectionStrategy;
   upstreams: UpstreamInfo[];
   validation_endpoint: string;
   config: Record<string, unknown>;

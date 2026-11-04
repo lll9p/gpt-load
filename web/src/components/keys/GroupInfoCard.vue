@@ -555,6 +555,15 @@ function resetPage() {
                         {{ group?.channel_type }}
                       </n-form-item>
                     </n-grid-item>
+                    <n-grid-item v-if="!isAggregateGroup">
+                      <n-form-item :label="`${t('keys.keySelectionStrategy')}：`">
+                        {{
+                          group?.key_selection_strategy === "fill_first"
+                            ? t("keys.keySelectionFillFirst")
+                            : t("keys.keySelectionRoundRobin")
+                        }}
+                      </n-form-item>
+                    </n-grid-item>
                     <n-grid-item>
                       <n-form-item :label="`${t('keys.sortOrder')}：`">
                         {{ group?.sort }}
