@@ -77,7 +77,7 @@ func (pool *groupPool) remove(keyID uint) {
 	}
 }
 
-func (p *KeyProvider) SelectKey(groupID uint) (*models.APIKey, error) {
+func (p *KeyProvider) SelectKey(groupID uint, excluded map[uint]bool) (*models.APIKey, error) {
 	pool := p.pool(groupID, false)
 	if pool == nil {
 		return nil, app_errors.ErrNoActiveKeys
@@ -88,6 +88,13 @@ func (p *KeyProvider) SelectKey(groupID uint) (*models.APIKey, error) {
 		return nil, app_errors.ErrNoActiveKeys
 	}
 	element := pool.active.Front()
+	for element != nil && excluded[element.Value.(uint)] {
+		element = element.Next()
+	}
+	if element == nil {
+		pool.mu.Unlock()
+		return nil, app_errors.ErrNoActiveKeys
+	}
 	key := pool.keys[element.Value.(uint)].key
 	pool.active.MoveToBack(element)
 	pool.mu.Unlock()

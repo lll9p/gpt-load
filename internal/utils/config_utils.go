@@ -179,6 +179,8 @@ func GetValidationEndpoint(group *models.Group) string {
 
 	// Return default validation endpoint based on channel type
 	switch group.ChannelType {
+	case "tavily":
+		return "/search"
 	case "openai":
 		return "/v1/chat/completions"
 	case "openai-response":

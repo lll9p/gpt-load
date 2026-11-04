@@ -310,6 +310,8 @@ export default {
     sortValue: "排序值",
     testModelTooltip:
       "用于验证API密钥有效性的模型名称。系统会使用这个模型发送测试请求来检查密钥是否可用，请尽量使用轻量快速的模型",
+    tavilyTestPathTooltip:
+      "Tavily 使用 POST /search 校验密钥，无需测试模型。每次成功验证消耗 1 credit。",
     testPathTooltip1: "自定义用于验证密钥的API端点路径。如果不填写，将使用默认路径",
     testPathTooltip2: "如需使用非标准路径，请在此填写完整的API路径",
     optionalCustomValidationPath: "可选，自定义用于验证key的API路径",

@@ -2,7 +2,7 @@
 import { keysApi } from "@/api/keys";
 import { settingsApi } from "@/api/settings";
 import ProxyKeysInput from "@/components/common/ProxyKeysInput.vue";
-import type { Group, GroupConfigOption, UpstreamInfo } from "@/types/models";
+import type { ChannelType, Group, GroupConfigOption, UpstreamInfo } from "@/types/models";
 import { Add, Close, HelpCircleOutline, Remove } from "@vicons/ionicons5";
 import {
   NButton,
@@ -67,7 +67,7 @@ interface GroupFormData {
   display_name: string;
   description: string;
   upstreams: UpstreamInfo[];
-  channel_type: "anthropic" | "gemini" | "openai" | "openai-response";
+  channel_type: ChannelType;
   sort: number;
   test_model: string;
   validation_endpoint: string;
@@ -141,6 +141,8 @@ const upstreamPlaceholder = computed(() => {
       return "https://generativelanguage.googleapis.com";
     case "anthropic":
       return "https://api.anthropic.com";
+    case "tavily":
+      return "https://api.tavily.com";
     default:
       return t("keys.enterUpstreamUrl");
   }
@@ -154,6 +156,8 @@ const validationEndpointPlaceholder = computed(() => {
       return "/v1/responses";
     case "anthropic":
       return "/v1/messages";
+    case "tavily":
+      return "/search";
     case "gemini":
       return ""; // Gemini 不显示此字段
     default:
@@ -162,7 +166,7 @@ const validationEndpointPlaceholder = computed(() => {
 });
 
 // 表单验证规则
-const rules: FormRules = {
+const rules = computed<FormRules>(() => ({
   name: [
     {
       required: true,
@@ -184,7 +188,7 @@ const rules: FormRules = {
   ],
   test_model: [
     {
-      required: true,
+      required: formData.channel_type !== "tavily",
       message: t("keys.enterTestModel"),
       trigger: ["blur", "input"],
     },
@@ -197,7 +201,7 @@ const rules: FormRules = {
       trigger: ["blur", "change"],
     },
   ],
-};
+}));
 
 // 监听弹窗显示状态
 watch(
@@ -221,7 +225,7 @@ watch(
 // 监听渠道类型变化，在新增模式下智能更新默认值
 watch(
   () => formData.channel_type,
-  (_newChannelType, oldChannelType) => {
+  (newChannelType, oldChannelType) => {
     if (!props.group && oldChannelType) {
       // 仅在新增模式且不是初始设置时处理
       // 检查测试模型是否应该更新（为空或是旧渠道类型的默认值）
@@ -243,8 +247,21 @@ watch(
         userModifiedFields.value.upstream = false;
       }
     }
+    if (newChannelType === "tavily") {
+      formData.test_model = "";
+      formData.validation_endpoint = "/search";
+      formData.model_redirect_rules = "";
+      formData.model_redirect_strict = false;
+    }
   }
 );
+
+function handleChannelTypeChange(channelType: ChannelType) {
+  if (formData.channel_type === "tavily" && channelType !== "tavily") {
+    formData.validation_endpoint = "";
+  }
+  formData.channel_type = channelType;
+}
 
 // 获取旧渠道类型的默认值（用于比较）
 function getOldDefaultTestModel(channelType: string): string {
@@ -270,6 +287,8 @@ function getOldDefaultUpstream(channelType: string): string {
       return "https://generativelanguage.googleapis.com";
     case "anthropic":
       return "https://api.anthropic.com";
+    case "tavily":
+      return "https://api.tavily.com";
     default:
       return "";
   }
@@ -337,11 +356,16 @@ function loadGroupData() {
       : [{ url: "", weight: 1 }],
     channel_type: props.group.channel_type || "openai",
     sort: props.group.sort || 1,
-    test_model: props.group.test_model || "",
-    validation_endpoint: props.group.validation_endpoint || "",
+    test_model: props.group.channel_type === "tavily" ? "" : props.group.test_model || "",
+    validation_endpoint:
+      props.group.channel_type === "tavily" ? "/search" : props.group.validation_endpoint || "",
     param_overrides: JSON.stringify(props.group.param_overrides || {}, null, 2),
-    model_redirect_rules: JSON.stringify(props.group.model_redirect_rules || {}, null, 2),
-    model_redirect_strict: props.group.model_redirect_strict || false,
+    model_redirect_rules:
+      props.group.channel_type === "tavily"
+        ? ""
+        : JSON.stringify(props.group.model_redirect_rules || {}, null, 2),
+    model_redirect_strict:
+      props.group.channel_type !== "tavily" && (props.group.model_redirect_strict || false),
     config: {},
     configItems,
     header_rules: (props.group.header_rules || []).map((rule: HeaderRuleItem) => ({
@@ -641,7 +665,8 @@ async function handleSubmit() {
                 </div>
               </template>
               <n-select
-                v-model:value="formData.channel_type"
+                :value="formData.channel_type"
+                @update:value="handleChannelTypeChange"
                 :options="channelTypeOptions"
                 :placeholder="t('keys.selectChannelType')"
               />
@@ -670,7 +695,12 @@ async function handleSubmit() {
 
           <!-- Test model and test path on the same row -->
           <div class="form-row">
-            <n-form-item :label="t('keys.testModel')" path="test_model" class="form-item-half">
+            <n-form-item
+              v-if="formData.channel_type !== 'tavily'"
+              :label="t('keys.testModel')"
+              path="test_model"
+              class="form-item-half"
+            >
               <template #label>
                 <div class="form-label-with-tooltip">
                   {{ t("keys.testModel") }}
@@ -703,21 +733,27 @@ async function handleSubmit() {
                       <n-icon :component="HelpCircleOutline" class="help-icon" />
                     </template>
                     <div>
-                      {{ t("keys.testPathTooltip1") }}
-                      <br />
-                      • OpenAI: /v1/chat/completions
-                      <br />
-                      • OpenAI Response: /v1/responses
-                      <br />
-                      • Anthropic: /v1/messages
-                      <br />
-                      {{ t("keys.testPathTooltip2") }}
+                      <template v-if="formData.channel_type === 'tavily'">
+                        {{ t("keys.tavilyTestPathTooltip") }}
+                      </template>
+                      <template v-else>
+                        {{ t("keys.testPathTooltip1") }}
+                        <br />
+                        • OpenAI: /v1/chat/completions
+                        <br />
+                        • OpenAI Response: /v1/responses
+                        <br />
+                        • Anthropic: /v1/messages
+                        <br />
+                        {{ t("keys.testPathTooltip2") }}
+                      </template>
                     </div>
                   </n-tooltip>
                 </div>
               </template>
               <n-input
                 v-model:value="formData.validation_endpoint"
+                :readonly="formData.channel_type === 'tavily'"
                 :placeholder="
                   validationEndpointPlaceholder || t('keys.optionalCustomValidationPath')
                 "
@@ -1084,7 +1120,10 @@ async function handleSubmit() {
               </div>
 
               <!-- 模型重定向配置 -->
-              <div v-if="formData.group_type !== 'aggregate'" class="config-section">
+              <div
+                v-if="formData.group_type !== 'aggregate' && formData.channel_type !== 'tavily'"
+                class="config-section"
+              >
                 <n-form-item path="model_redirect_strict">
                   <template #label>
                     <div class="form-label-with-tooltip">

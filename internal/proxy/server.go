@@ -96,9 +96,22 @@ func (ps *ProxyServer) HandleProxy(c *gin.Context) {
 		return
 	}
 
-	isStream := channelHandler.IsStreamRequest(c, bodyBytes)
+	finalBodyBytes, err = channelHandler.PrepareRequest(c.Request, finalBodyBytes, originalGroup.Name)
+	if err != nil {
+		response.Error(c, app_errors.NewAPIError(app_errors.ErrBadRequest, err.Error()))
+		return
+	}
+	streamBody := bodyBytes
+	if group.ChannelType == "tavily" {
+		streamBody = finalBodyBytes
+	}
+	isStream := channelHandler.IsStreamRequest(c, streamBody)
+	excluded := map[uint]bool(nil)
+	if group.ChannelType == "tavily" {
+		excluded = make(map[uint]bool)
+	}
 
-	ps.executeRequestWithRetry(c, channelHandler, originalGroup, group, finalBodyBytes, isStream, startTime, 0)
+	ps.executeRequestWithRetry(c, channelHandler, originalGroup, group, finalBodyBytes, isStream, startTime, 0, excluded, nil)
 }
 
 // executeRequestWithRetry is the core recursive function for handling requests and retries.
@@ -111,10 +124,16 @@ func (ps *ProxyServer) executeRequestWithRetry(
 	isStream bool,
 	startTime time.Time,
 	retryCount int,
+	excluded map[uint]bool,
+	selectedKey *models.APIKey,
 ) {
 	cfg := group.EffectiveConfig
 
-	apiKey, err := ps.keyProvider.SelectKey(group.ID)
+	apiKey := selectedKey
+	var err error
+	if apiKey == nil {
+		apiKey, err = ps.keyProvider.SelectKey(group.ID, excluded)
+	}
 	if err != nil {
 		logrus.Errorf("Failed to select a key for group %s on attempt %d: %v", group.Name, retryCount+1, err)
 		response.Error(c, app_errors.NewAPIError(app_errors.ErrNoKeysAvailable, err.Error()))
@@ -175,6 +194,9 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		utils.ApplyHeaderRules(req, group.HeaderRuleList, headerCtx)
 	}
 
+	if group.ChannelType == "tavily" {
+		channelHandler.ModifyRequest(req, apiKey, group)
+	}
 	var client *http.Client
 	if isStream {
 		client = channelHandler.GetStreamClient()
@@ -189,11 +211,16 @@ func (ps *ProxyServer) executeRequestWithRetry(
 	}
 
 	// Unified error handling for retries.
-	// Retry policy is fully defined by group.FailoverStatusCodeMatcher (derived from EffectiveConfig).
-	shouldRetryByStatus := resp != nil && shouldFailoverOnStatusCode(resp.StatusCode, group)
-	if err != nil || shouldRetryByStatus {
+	// Channels may restrict group failover policy and count key failures separately.
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	retry, countFailure := channelHandler.FailurePolicy(status, err != nil, group)
+	if err != nil || retry || countFailure || (group.ChannelType == "tavily" && status >= 400) {
 		if err != nil && app_errors.IsIgnorableError(err) {
-			logrus.Debugf("Client-side ignorable error for key %s, aborting retries: %v", utils.MaskAPIKey(apiKey.KeyValue), err)
+			logrus.Debugf("Client-side ignorable error for key %s, aborting retries: %v", utils.MaskAPIKey(apiKey.KeyValue), utils.RedactSecret(err.Error(), apiKey.KeyValue))
+			err = errors.New(utils.RedactSecret(err.Error(), apiKey.KeyValue))
 			ps.logRequest(c, originalGroup, group, apiKey, startTime, 499, err, isStream, upstreamURL, channelHandler, bodyBytes, models.RequestTypeFinal)
 			return
 		}
@@ -205,8 +232,8 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		if err != nil {
 			statusCode = 500
 			errorMessage = err.Error()
-			parsedError = errorMessage
-			logrus.Debugf("Request failed (attempt %d/%d) for key %s: %v", retryCount+1, cfg.MaxRetries, utils.MaskAPIKey(apiKey.KeyValue), err)
+			parsedError = utils.RedactSecret(errorMessage, apiKey.KeyValue)
+			logrus.Debugf("Request failed (attempt %d/%d) for key %s: %v", retryCount+1, cfg.MaxRetries, utils.MaskAPIKey(apiKey.KeyValue), utils.RedactSecret(err.Error(), apiKey.KeyValue))
 		} else {
 			// Retryable upstream response (HTTP status code matched failover policy)
 			statusCode = resp.StatusCode
@@ -218,7 +245,7 @@ func (ps *ProxyServer) executeRequestWithRetry(
 
 			errorBody = handleGzipCompression(resp, errorBody)
 			errorMessage = string(errorBody)
-			parsedError = app_errors.ParseUpstreamError(errorBody)
+			parsedError = utils.RedactSecret(app_errors.ParseUpstreamError(errorBody), apiKey.KeyValue)
 			logrus.Debugf("Request failed with status %d (attempt %d/%d) for key %s. Parsed Error: %s", statusCode, retryCount+1, cfg.MaxRetries, utils.MaskAPIKey(apiKey.KeyValue), parsedError)
 		}
 
@@ -228,10 +255,20 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		parsedError = utils.RedactSecret(parsedError, apiKey.KeyValue)
 
 		// 使用解析后的错误信息更新密钥状态
-		ps.keyProvider.UpdateStatus(apiKey, group, false, parsedError)
+		if countFailure {
+			ps.keyProvider.UpdateStatus(apiKey, group, false, parsedError)
+		}
 
 		// 判断是否为最后一次尝试
-		isLastAttempt := retryCount >= cfg.MaxRetries
+		isLastAttempt := !retry || retryCount >= cfg.MaxRetries
+		var nextKey *models.APIKey
+		if excluded != nil {
+			excluded[apiKey.ID] = true
+			if !isLastAttempt {
+				nextKey, _ = ps.keyProvider.SelectKey(group.ID, excluded)
+				isLastAttempt = nextKey == nil
+			}
+		}
 		requestType := models.RequestTypeRetry
 		if isLastAttempt {
 			requestType = models.RequestTypeFinal
@@ -241,6 +278,18 @@ func (ps *ProxyServer) executeRequestWithRetry(
 
 		// 如果是最后一次尝试，直接返回错误，不再递归
 		if isLastAttempt {
+			if resp != nil && group.ChannelType == "tavily" {
+				for name, values := range resp.Header {
+					for _, value := range values {
+						c.Writer.Header().Add(name, utils.RedactSecret(value, apiKey.KeyValue))
+					}
+				}
+				// The body has been decoded and may have been redacted.
+				c.Writer.Header().Del("Content-Encoding")
+				c.Writer.Header().Del("Content-Length")
+				c.Data(statusCode, resp.Header.Get("Content-Type"), []byte(errorMessage))
+				return
+			}
 			var errorJSON map[string]any
 			if err := json.Unmarshal([]byte(errorMessage), &errorJSON); err == nil {
 				c.JSON(statusCode, errorJSON)
@@ -250,7 +299,7 @@ func (ps *ProxyServer) executeRequestWithRetry(
 			return
 		}
 
-		ps.executeRequestWithRetry(c, channelHandler, originalGroup, group, bodyBytes, isStream, startTime, retryCount+1)
+		ps.executeRequestWithRetry(c, channelHandler, originalGroup, group, bodyBytes, isStream, startTime, retryCount+1, excluded, nextKey)
 		return
 	}
 
@@ -275,13 +324,6 @@ func (ps *ProxyServer) executeRequestWithRetry(
 	}
 
 	ps.logRequest(c, originalGroup, group, apiKey, startTime, resp.StatusCode, nil, isStream, upstreamURL, channelHandler, bodyBytes, models.RequestTypeFinal)
-}
-
-func shouldFailoverOnStatusCode(statusCode int, group *models.Group) bool {
-	if group == nil {
-		return false
-	}
-	return group.FailoverStatusCodeMatcher.Match(statusCode)
 }
 
 // logRequest is a helper function to create and record a request log.

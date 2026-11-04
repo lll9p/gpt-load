@@ -2,6 +2,7 @@ package keypool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"gpt-load/internal/channel"
 	"gpt-load/internal/config"
@@ -73,7 +74,9 @@ func (s *KeyValidator) ValidateSingleKey(key *models.APIKey, group *models.Group
 	if !isValid && validationErr != nil {
 		errorMsg = validationErr.Error()
 	}
-	s.keypoolProvider.UpdateStatus(key, group, isValid, errorMsg)
+	if !errors.Is(validationErr, channel.ErrValidationInconclusive) {
+		s.keypoolProvider.UpdateStatus(key, group, isValid, errorMsg)
+	}
 
 	if !isValid {
 		logrus.WithFields(logrus.Fields{

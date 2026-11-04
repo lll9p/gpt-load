@@ -42,6 +42,10 @@ func (ch *OpenAIChannel) ModifyRequest(req *http.Request, apiKey *models.APIKey,
 
 // IsStreamRequest checks if the request is for a streaming response using the pre-read body.
 func (ch *OpenAIChannel) IsStreamRequest(c *gin.Context, bodyBytes []byte) bool {
+	return isJSONStreamRequest(c, bodyBytes)
+}
+
+func isJSONStreamRequest(c *gin.Context, bodyBytes []byte) bool {
 	if strings.Contains(c.GetHeader("Accept"), "text/event-stream") {
 		return true
 	}

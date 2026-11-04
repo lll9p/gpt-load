@@ -66,6 +66,14 @@ func ParseUpstreamError(body []byte) string {
 		}
 	}
 
+	var tavily struct {
+		Detail struct {
+			Error string `json:"error"`
+		} `json:"detail"`
+	}
+	if json.Unmarshal(body, &tavily) == nil && strings.TrimSpace(tavily.Detail.Error) != "" {
+		return truncateString(tavily.Detail.Error, maxErrorBodyLength)
+	}
 	// 5. Graceful Degradation: If all parsing fails, return the raw (but safe) body.
 	return truncateString(string(body), maxErrorBodyLength)
 }

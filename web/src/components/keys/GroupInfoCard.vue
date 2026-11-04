@@ -561,14 +561,16 @@ function resetPage() {
                       </n-form-item>
                     </n-grid-item>
                     <!-- 标准分组才显示测试模型和测试路径 -->
-                    <n-grid-item v-if="!isAggregateGroup">
+                    <n-grid-item v-if="!isAggregateGroup && group?.channel_type !== 'tavily'">
                       <n-form-item :label="`${t('keys.testModel')}：`">
                         {{ group?.test_model }}
                       </n-form-item>
                     </n-grid-item>
                     <n-grid-item v-if="!isAggregateGroup && group?.channel_type !== 'gemini'">
                       <n-form-item :label="`${t('keys.testPath')}：`">
-                        {{ group?.validation_endpoint }}
+                        {{
+                          group?.channel_type === "tavily" ? "/search" : group?.validation_endpoint
+                        }}
                       </n-form-item>
                     </n-grid-item>
                     <n-grid-item :span="2">
@@ -727,7 +729,7 @@ function resetPage() {
                     </div>
                   </n-form-item>
                   <n-form-item
-                    v-if="group?.model_redirect_rules"
+                    v-if="group?.channel_type !== 'tavily' && group?.model_redirect_rules"
                     :label="`${t('keys.modelRedirectPolicy')}：`"
                     :span="2"
                   >
@@ -743,7 +745,7 @@ function resetPage() {
                     </n-tag>
                   </n-form-item>
                   <n-form-item
-                    v-if="group?.model_redirect_rules"
+                    v-if="group?.channel_type !== 'tavily' && group?.model_redirect_rules"
                     :label="`${t('keys.modelRedirectRules')}：`"
                     :span="2"
                   >

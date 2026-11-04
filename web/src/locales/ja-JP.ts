@@ -314,6 +314,8 @@ export default {
     sortValue: "ソート値",
     testModelTooltip:
       "APIキーの有効性を検証するためのモデル名。システムはこのモデルを使用してテストリクエストを送信し、キーが機能しているか確認します。軽量で高速なモデルを使用してください",
+    tavilyTestPathTooltip:
+      "Tavily は POST /search でキーを検証します。テストモデルは不要です。検証が成功するたびに 1 credit を消費します。",
     testPathTooltip1:
       "キー検証用のカスタムAPIエンドポイントパス。指定しない場合はデフォルトパスが使用されます",
     testPathTooltip2: "非標準パスを使用する場合は、完全なAPIパスをここに入力してください",

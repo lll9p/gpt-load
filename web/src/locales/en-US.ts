@@ -315,6 +315,8 @@ export default {
     sortValue: "Sort value",
     testModelTooltip:
       "Model name for validating API key availability. System will use this model to send test requests to check if the key is working. Please use lightweight and fast models",
+    tavilyTestPathTooltip:
+      "Tavily validates keys with POST /search; no test model is required. Each successful validation consumes 1 credit.",
     testPathTooltip1:
       "Custom API endpoint path for key validation. Default path will be used if not specified",
     testPathTooltip2: "If using non-standard path, please enter complete API path here",

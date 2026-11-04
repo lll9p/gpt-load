@@ -186,7 +186,7 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		testModel = "-"
 	case "standard":
 		testModel = strings.TrimSpace(params.TestModel)
-		if testModel == "" {
+		if testModel == "" && channelType != "tavily" {
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_required", nil)
 		}
 		cleaned, err := s.validateAndCleanUpstreams(params.Upstreams)
@@ -201,6 +201,21 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 		}
 	}
 
+	if channelType == "tavily" {
+		if validationEndpoint != "" && validationEndpoint != "/search" {
+			return nil, app_errors.NewAPIError(app_errors.ErrValidation, "Tavily validation endpoint must be /search")
+		}
+		validationEndpoint = "/search"
+		testModel = ""
+		if len(params.ModelRedirectRules) > 0 {
+			return nil, app_errors.NewAPIError(app_errors.ErrValidation, "Tavily does not support model redirects")
+		}
+		defaults := map[string]any{"max_retries": 2, "blacklist_threshold": 1, "failover_status_codes": "401,432-433"}
+		for k, v := range params.Config {
+			defaults[k] = v
+		}
+		params.Config = defaults
+	}
 	cleanedConfig, err := s.validateAndCleanConfig(params.Config)
 	if err != nil {
 		return nil, err
@@ -426,7 +441,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 
 	if params.HasTestModel {
 		cleanedTestModel := strings.TrimSpace(params.TestModel)
-		if cleanedTestModel == "" {
+		if cleanedTestModel == "" && group.ChannelType != "tavily" {
 			return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_empty", nil)
 		}
 		group.TestModel = cleanedTestModel
@@ -492,6 +507,19 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		changedFields = append(changedFields, "header_rules")
 	}
 
+	if group.ChannelType == "tavily" {
+		if params.ValidationEndpoint != nil && group.ValidationEndpoint != "" && group.ValidationEndpoint != "/search" {
+			return nil, app_errors.NewAPIError(app_errors.ErrValidation, "Tavily validation endpoint must be /search")
+		}
+		if len(group.ModelRedirectRules) > 0 {
+			return nil, app_errors.NewAPIError(app_errors.ErrValidation, "Tavily does not support model redirects")
+		}
+		group.TestModel = ""
+		group.ValidationEndpoint = "/search"
+		changedFields = append(changedFields, "test_model", "validation_endpoint")
+	} else if group.GroupType != "aggregate" && strings.TrimSpace(group.TestModel) == "" {
+		return nil, NewI18nError(app_errors.ErrValidation, "validation.test_model_required", nil)
+	}
 	// Select keeps zero values and JSON serializers without updating unrequested fields.
 	result := tx.Model(&group).Select(changedFields).Updates(&group)
 	if result.Error != nil {

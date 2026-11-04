@@ -23,6 +23,11 @@ func Logger(config types.LogConfig) gin.HandlerFunc {
 		start := time.Now()
 		path := c.Request.URL.Path
 		raw := c.Request.URL.RawQuery
+		if query := c.Request.URL.Query(); query.Has("key") || query.Has("api_key") {
+			query.Del("key")
+			query.Del("api_key")
+			raw = query.Encode()
+		}
 
 		// Process request
 		c.Next()

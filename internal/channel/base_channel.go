@@ -265,3 +265,11 @@ func mergeModelLists(upstream []any, configured []any) []any {
 
 	return result
 }
+
+func (b *BaseChannel) PrepareRequest(req *http.Request, body []byte, groupName string) ([]byte, error) {
+	return body, nil
+}
+func (b *BaseChannel) FailurePolicy(status int, transportError bool, group *models.Group) (bool, bool) {
+	retry := transportError || group.FailoverStatusCodeMatcher.Match(status)
+	return retry, retry
+}
