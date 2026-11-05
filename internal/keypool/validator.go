@@ -8,6 +8,7 @@ import (
 	"gpt-load/internal/config"
 	"gpt-load/internal/encryption"
 	"gpt-load/internal/models"
+	"gpt-load/internal/outboundproxy"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -69,6 +70,10 @@ func (s *KeyValidator) ValidateSingleKey(key *models.APIKey, group *models.Group
 	}
 
 	isValid, validationErr := ch.ValidateKey(ctx, key, group)
+
+	if outboundproxy.IsInfrastructure(validationErr) {
+		validationErr = fmt.Errorf("%w: outbound proxy unavailable", channel.ErrValidationInconclusive)
+	}
 
 	var errorMsg string
 	if !isValid && validationErr != nil {

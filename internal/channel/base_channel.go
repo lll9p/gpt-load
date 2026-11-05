@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"gpt-load/internal/httpclient"
 	"gpt-load/internal/models"
+	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/types"
 	"gpt-load/internal/utils"
 	"net/http"
@@ -25,6 +27,9 @@ type UpstreamInfo struct {
 
 // BaseChannel provides common functionality for channel proxies.
 type BaseChannel struct {
+	proxyManager       *outboundproxy.Manager
+	clientConfig       httpclient.Config
+	streamConfig       httpclient.Config
 	Name               string
 	Upstreams          []UpstreamInfo
 	HTTPClient         *http.Client
@@ -272,4 +277,42 @@ func (b *BaseChannel) PrepareRequest(req *http.Request, body []byte, groupName s
 func (b *BaseChannel) FailurePolicy(status int, transportError bool, group *models.Group) (bool, bool) {
 	retry := transportError || group.FailoverStatusCodeMatcher.Match(status)
 	return retry, retry
+}
+
+// DoRequest resolves sticky routing per key without mutating shared transports.
+func (b *BaseChannel) DoRequest(req *http.Request, key *models.APIKey, group *models.Group, isStream bool) (*http.Response, error) {
+	client := b.HTTPClient
+	var proxyID uint
+	if isStream {
+		client = b.StreamClient
+	}
+	if group.StickyProxyEnabled {
+		req.Header.Del("Proxy-Authorization")
+		if b.proxyManager == nil || key == nil {
+			return nil, &outboundproxy.InfrastructureError{Status: 503}
+		}
+		config := b.clientConfig
+		if isStream {
+			config = b.streamConfig
+		}
+		var err error
+		client, proxyID, err = b.proxyManager.ClientFor(key.KeyHash, config)
+		if err != nil {
+			return nil, err
+		}
+	}
+	resp, err := client.Do(req)
+	if group.StickyProxyEnabled {
+		if err != nil {
+			if resp != nil && resp.Body != nil {
+				resp.Body.Close()
+			}
+			return nil, &outboundproxy.InfrastructureError{Status: 502, ProxyID: proxyID, Cause: err}
+		}
+		if resp.StatusCode == http.StatusProxyAuthRequired {
+			resp.Body.Close()
+			return nil, &outboundproxy.InfrastructureError{Status: 502, ProxyID: proxyID}
+		}
+	}
+	return resp, err
 }

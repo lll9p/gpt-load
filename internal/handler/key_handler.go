@@ -197,7 +197,8 @@ func (s *Server) ListKeysInGroup(c *gin.Context) {
 		return
 	}
 
-	if _, ok := s.findGroupByID(c, groupID); !ok {
+	group, ok := s.findGroupByID(c, groupID)
+	if !ok {
 		return
 	}
 
@@ -224,6 +225,12 @@ func (s *Server) ListKeysInGroup(c *gin.Context) {
 
 	// Decrypt all keys for display
 	for i := range keys {
+		if group.StickyProxyEnabled {
+			if proxy, err := s.ProxyManager.Select(keys[i].KeyHash); err == nil {
+				keys[i].OutboundProxyID = proxy.ID
+				keys[i].OutboundProxyName = proxy.Name
+			}
+		}
 		decryptedValue, err := s.EncryptionSvc.Decrypt(keys[i].KeyValue)
 		if err != nil {
 			logrus.WithError(err).WithField("key_id", keys[i].ID).Error("Failed to decrypt key value for listing")

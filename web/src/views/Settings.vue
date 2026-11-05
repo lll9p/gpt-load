@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { settingsApi, type Setting, type SettingCategory } from "@/api/settings";
+import OutboundProxyManager from "@/components/OutboundProxyManager.vue";
 import ProxyKeysInput from "@/components/common/ProxyKeysInput.vue";
 import { HelpCircle, Save } from "@vicons/ionicons5";
 import {
@@ -101,6 +102,7 @@ function generateValidationRules(item: Setting): FormItemRule[] {
 
 <template>
   <n-space vertical>
+    <outbound-proxy-manager />
     <n-form ref="formRef" :model="form" label-placement="top">
       <n-space vertical>
         <n-card

@@ -265,6 +265,12 @@ Supported Proxy Protocol Formats:
 
 </details>
 
+### Sticky outbound proxies
+
+In Settings, manage the global outbound proxy list, then enable **Sticky outbound proxy** on a group. Use full http/https/socks5/socks5h URLs and URL-encode credentials. Lists mask credentials; the password editor allows explicit reveal. Key cards show the current proxy name.
+
+HRW uses KeyHash and stable proxy IDs: no TTL or binding table, the same key maps identically across enabled groups, and multiple keys may share a proxy. Reordering or restarting preserves mapping; adding/removing/disabling/restoring proxies or changing KeyHash during encryption migration may remap keys. Network failures never automatically switch proxies or fall back to direct connections; an empty enabled pool fails requests. Saved fixed `proxy_url` and `HTTP_PROXY` apply only with sticky mode disabled. A fixed URL does not guarantee a fixed exit IP. Proxy credentials are included in `migrate-keys`; include them when planning encryption-key migrations.
+
 ## Data Encryption Migration
 
 GPT-Load supports encrypted storage of API keys. You can enable, disable, or change the encryption key at any time.

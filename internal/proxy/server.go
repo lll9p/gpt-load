@@ -17,6 +17,7 @@ import (
 	app_errors "gpt-load/internal/errors"
 	"gpt-load/internal/keypool"
 	"gpt-load/internal/models"
+	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/response"
 	"gpt-load/internal/services"
 	"gpt-load/internal/utils"
@@ -185,15 +186,25 @@ func (ps *ProxyServer) executeRequestWithRetry(
 	if group.ChannelType == "tavily" {
 		channelHandler.ModifyRequest(req, apiKey, group)
 	}
-	var client *http.Client
 	if isStream {
-		client = channelHandler.GetStreamClient()
 		req.Header.Set("X-Accel-Buffering", "no")
-	} else {
-		client = channelHandler.GetHTTPClient()
+	}
+	failInfrastructure := func(infrastructure *outboundproxy.InfrastructureError) {
+		if errors.Is(infrastructure, context.Canceled) || errors.Is(req.Context().Err(), context.Canceled) ||
+			(infrastructure.Cause != nil && app_errors.IsIgnorableError(infrastructure.Cause)) {
+			ps.logRequest(c, group, apiKey, startTime, 499, infrastructure, isStream, upstreamURL, channelHandler, bodyBytes, models.RequestTypeFinal)
+			return
+		}
+		ps.logRequest(c, group, apiKey, startTime, infrastructure.Status, infrastructure, isStream, upstreamURL, channelHandler, bodyBytes, models.RequestTypeFinal)
+		response.Error(c, &app_errors.APIError{HTTPStatus: infrastructure.Status, Code: "OUTBOUND_PROXY_UNAVAILABLE", Message: infrastructure.Error()})
+	}
+	resp, err := channelHandler.DoRequest(req, apiKey, group, isStream)
+	var infrastructure *outboundproxy.InfrastructureError
+	if errors.As(err, &infrastructure) {
+		failInfrastructure(infrastructure)
+		return
 	}
 
-	resp, err := client.Do(req)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -227,6 +238,10 @@ func (ps *ProxyServer) executeRequestWithRetry(
 			statusCode = resp.StatusCode
 			errorBody, readErr := io.ReadAll(resp.Body)
 			if readErr != nil {
+				if group.StickyProxyEnabled {
+					failInfrastructure(&outboundproxy.InfrastructureError{Status: http.StatusBadGateway, Cause: readErr})
+					return
+				}
 				logrus.Errorf("Failed to read error body: %v", readErr)
 				errorBody = []byte("Failed to read error body")
 			}

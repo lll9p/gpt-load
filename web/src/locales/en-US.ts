@@ -1,4 +1,27 @@
 export default {
+  outboundProxies: {
+    title: "Outbound proxies",
+    add: "Add proxy",
+    refresh: "Refresh",
+    loadFailed: "Could not load proxies. Retry with Refresh.",
+    empty: "No outbound proxies",
+    name: "Name",
+    url: "Proxy URL",
+    enabled: "Enabled",
+    disabled: "Disabled",
+    required: "Required",
+    urlHelp:
+      "Use a full http/https/socks5/socks5h URL. URL-encode usernames and passwords. Click the eye to reveal credentials.",
+    deleteConfirm:
+      "Delete proxy “{name}”? Affected keys may change proxy; an empty enabled pool causes requests to fail.",
+    changeWarning:
+      "Adding, deleting, disabling or restoring proxies can remap some keys. No automatic failover or direct fallback on network errors.",
+    sticky: "Sticky outbound proxy",
+    stickyHelp:
+      "When enabled, global enabled proxies take priority; saved fixed proxy_url and HTTP_PROXY do not apply. When disabled, fixed proxy_url / environment settings apply.",
+    current: "Current proxy",
+    help: "HRW selects by KeyHash and stable proxy ID, without TTL or a binding table. The same key maps identically across enabled groups; multiple keys may share a proxy. Order and restarts do not change mapping. An empty enabled pool fails requests. A proxy URL does not guarantee a fixed exit IP.",
+  },
   auth: {
     noAuthKeyFound: "No authentication found, cannot export",
   },

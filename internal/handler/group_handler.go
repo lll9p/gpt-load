@@ -47,6 +47,7 @@ func (s *Server) handleGroupError(c *gin.Context, err error) bool {
 
 // GroupCreateRequest defines the payload for creating a group.
 type GroupCreateRequest struct {
+	StickyProxyEnabled   bool                `json:"sticky_proxy_enabled"`
 	Name                 string              `json:"name"`
 	DisplayName          string              `json:"display_name"`
 	Description          string              `json:"description"`
@@ -89,6 +90,7 @@ func (s *Server) CreateGroup(c *gin.Context) {
 	}
 
 	params := services.GroupCreateParams{
+		StickyProxyEnabled:   req.StickyProxyEnabled,
 		Name:                 req.Name,
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
@@ -140,6 +142,7 @@ func (s *Server) ListGroups(c *gin.Context) {
 // GroupUpdateRequest defines the payload for updating a group.
 // Using a dedicated struct avoids issues with zero values being ignored by GORM's Update.
 type GroupUpdateRequest struct {
+	StickyProxyEnabled   *bool               `json:"sticky_proxy_enabled"`
 	Name                 *string             `json:"name,omitempty"`
 	DisplayName          *string             `json:"display_name,omitempty"`
 	Description          *string             `json:"description,omitempty"`
@@ -208,6 +211,7 @@ func (s *Server) UpdateGroup(c *gin.Context) {
 	}
 
 	params := services.GroupUpdateParams{
+		StickyProxyEnabled:   req.StickyProxyEnabled,
 		Name:                 req.Name,
 		DisplayName:          req.DisplayName,
 		Description:          req.Description,
@@ -278,6 +282,7 @@ func (s *Server) ReorderGroups(c *gin.Context) {
 
 // GroupResponse defines the structure for a group response, excluding sensitive or large fields.
 type GroupResponse struct {
+	StickyProxyEnabled   bool                `json:"sticky_proxy_enabled"`
 	ID                   uint                `json:"id"`
 	Name                 string              `json:"name"`
 	Endpoint             string              `json:"endpoint"`
@@ -322,6 +327,7 @@ func (s *Server) newGroupResponse(group *models.Group) (*GroupResponse, error) {
 	}
 
 	return &GroupResponse{
+		StickyProxyEnabled:   group.StickyProxyEnabled,
 		ID:                   group.ID,
 		Name:                 group.Name,
 		Endpoint:             endpoint,

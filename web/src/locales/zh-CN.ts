@@ -1,4 +1,26 @@
 export default {
+  outboundProxies: {
+    title: "全局出站代理",
+    add: "添加代理",
+    refresh: "刷新",
+    loadFailed: "代理加载失败，请点击刷新重试。",
+    empty: "暂无出站代理",
+    name: "名称",
+    url: "代理 URL",
+    enabled: "启用",
+    disabled: "禁用",
+    required: "必填",
+    urlHelp:
+      "使用完整 http/https/socks5/socks5h URL，用户名和密码须 URL 编码。点击眼睛可查看凭据。",
+    deleteConfirm: "删除代理“{name}”？部分密钥可能更换代理；无启用代理时请求将失败。",
+    changeWarning:
+      "新增、删除、禁用或恢复代理可能使部分密钥重新映射。网络故障不会自动换代理或直连。",
+    sticky: "粘性出站代理",
+    stickyHelp:
+      "开启后优先使用全局启用代理，已保存的固定 proxy_url 和 HTTP_PROXY 不生效；关闭后沿用固定 proxy_url / 环境配置。",
+    current: "当前代理",
+    help: "HRW 根据 KeyHash 和稳定代理 ID 选择代理，无 TTL、无绑定表。跨开启组同一密钥映射相同，多密钥可共用代理。列表顺序和重启不改变映射，无启用代理时请求失败。固定 URL 不等于固定出口 IP。",
+  },
   auth: {
     noAuthKeyFound: "未找到认证信息，无法导出",
   },

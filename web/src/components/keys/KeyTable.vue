@@ -740,6 +740,10 @@ function resetPage() {
               </div>
             </div>
 
+            <div v-if="selectedGroup?.sticky_proxy_enabled" class="key-stats">
+              {{ t("outboundProxies.current") }}: {{ key.outbound_proxy_name || "-" }}
+            </div>
+
             <!-- 统计信息 + 操作按钮行 -->
             <div class="key-bottom">
               <div class="key-stats">

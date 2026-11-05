@@ -16,6 +16,7 @@ import (
 	"gpt-load/internal/i18n"
 	"gpt-load/internal/keypool"
 	"gpt-load/internal/models"
+	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/proxy"
 	"gpt-load/internal/router"
 	"gpt-load/internal/services"
@@ -57,7 +58,7 @@ func NewApp(buildFS embed.FS, indexPage []byte) (_ *App, err error) {
 		return nil, err
 	}
 	if err := database.AutoMigrate(
-		&models.SystemSetting{}, &models.Group{},
+		&models.SystemSetting{}, &models.Group{}, &models.OutboundProxy{},
 		&models.APIKey{}, &models.RequestLog{}, &models.GroupHourlyStat{},
 	); err != nil {
 		return nil, fmt.Errorf("database schema migration failed: %w", err)
@@ -81,7 +82,11 @@ func NewApp(buildFS embed.FS, indexPage []byte) (_ *App, err error) {
 		return nil, fmt.Errorf("failed to load group snapshot: %w", err)
 	}
 	clients := httpclient.NewHTTPClientManager()
-	channels := channel.NewFactory(settings, clients)
+	proxyManager := outboundproxy.NewManager(database, encryptionSvc, clients)
+	if err := proxyManager.Reload(); err != nil {
+		return nil, fmt.Errorf("failed to load outbound proxies: %w", err)
+	}
+	channels := channel.NewFactory(settings, clients, proxyManager)
 	validator := keypool.NewKeyValidator(keypool.KeyValidatorParams{
 		DB: database, ChannelFactory: channels, SettingsManager: settings,
 		KeypoolProvider: provider, EncryptionSvc: encryptionSvc,
@@ -93,7 +98,7 @@ func NewApp(buildFS embed.FS, indexPage []byte) (_ *App, err error) {
 	server := handler.NewServer(handler.NewServerParams{
 		DB: database, Config: configManager, SettingsManager: settings,
 		GroupManager: groups, GroupService: groupService, KeyService: keys,
-		LogService: logs, EncryptionSvc: encryptionSvc,
+		LogService: logs, EncryptionSvc: encryptionSvc, ProxyManager: proxyManager,
 	})
 	proxyServer, err := proxy.NewProxyServer(provider, groups, settings, channels, logs, encryptionSvc)
 	if err != nil {

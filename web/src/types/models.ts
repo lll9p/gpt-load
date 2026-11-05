@@ -19,6 +19,8 @@ export interface APIKey {
   group_id: number;
   key_value: string;
   notes?: string;
+  outbound_proxy_id?: number;
+  outbound_proxy_name?: string;
   status: KeyStatus;
   request_count: number;
   failure_count: number;
@@ -47,6 +49,7 @@ export interface Group {
   test_model: string;
   channel_type: ChannelType;
   key_selection_strategy?: KeySelectionStrategy;
+  sticky_proxy_enabled: boolean;
   upstreams: UpstreamInfo[];
   validation_endpoint: string;
   config: Record<string, unknown>;
@@ -218,4 +221,13 @@ export interface ChartDataset {
 export interface ChartData {
   labels: string[];
   datasets: ChartDataset[];
+}
+
+export interface OutboundProxy {
+  id: number;
+  name: string;
+  url: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }

@@ -80,6 +80,7 @@ interface GroupFormData {
   validation_endpoint: string;
   param_overrides: string;
   model_redirect_rules: string;
+  sticky_proxy_enabled: boolean;
   model_redirect_strict: boolean;
   config: Record<string, number | string | boolean>;
   configItems: ConfigItem[];
@@ -105,6 +106,7 @@ const formData = reactive<GroupFormData>({
   validation_endpoint: "",
   param_overrides: "",
   model_redirect_rules: "",
+  sticky_proxy_enabled: false,
   model_redirect_strict: false,
   config: {},
   configItems: [] as ConfigItem[],
@@ -330,6 +332,7 @@ function resetForm() {
     validation_endpoint: "",
     param_overrides: "",
     model_redirect_rules: "",
+    sticky_proxy_enabled: false,
     model_redirect_strict: false,
     config: {},
     configItems: [],
@@ -376,6 +379,7 @@ function loadGroupData() {
       props.group.channel_type === "tavily"
         ? ""
         : JSON.stringify(props.group.model_redirect_rules || {}, null, 2),
+    sticky_proxy_enabled: props.group.sticky_proxy_enabled ?? false,
     model_redirect_strict:
       props.group.channel_type !== "tavily" && (props.group.model_redirect_strict || false),
     config: {},
@@ -565,6 +569,7 @@ async function handleSubmit() {
       validation_endpoint: formData.validation_endpoint,
       param_overrides: paramOverrides,
       model_redirect_rules: modelRedirectRules,
+      sticky_proxy_enabled: formData.sticky_proxy_enabled,
       model_redirect_strict: formData.model_redirect_strict,
       config,
       header_rules: formData.header_rules
@@ -795,6 +800,12 @@ async function handleSubmit() {
           </div>
 
           <!-- Proxy keys -->
+          <n-form-item :label="t('outboundProxies.sticky')" path="sticky_proxy_enabled">
+            <n-space vertical>
+              <n-switch v-model:value="formData.sticky_proxy_enabled" />
+              <span>{{ t("outboundProxies.stickyHelp") }}</span>
+            </n-space>
+          </n-form-item>
           <n-form-item :label="t('keys.proxyKeys')" path="proxy_keys">
             <template #label>
               <div class="form-label-with-tooltip">

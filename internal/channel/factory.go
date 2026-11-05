@@ -6,6 +6,7 @@ import (
 	"gpt-load/internal/config"
 	"gpt-load/internal/httpclient"
 	"gpt-load/internal/models"
+	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/utils"
 	"net/url"
 	"sync"
@@ -43,14 +44,16 @@ func GetChannels() []string {
 type Factory struct {
 	settingsManager *config.SystemSettingsManager
 	clientManager   *httpclient.HTTPClientManager
+	proxyManager    *outboundproxy.Manager
 	channelCache    map[uint]ChannelProxy
 	cacheLock       sync.Mutex
 }
 
 // NewFactory creates a new channel factory.
-func NewFactory(settingsManager *config.SystemSettingsManager, clientManager *httpclient.HTTPClientManager) *Factory {
+func NewFactory(settingsManager *config.SystemSettingsManager, clientManager *httpclient.HTTPClientManager, proxyManager *outboundproxy.Manager) *Factory {
 	return &Factory{
 		settingsManager: settingsManager,
+		proxyManager:    proxyManager,
 		clientManager:   clientManager,
 		channelCache:    make(map[uint]ChannelProxy),
 	}
@@ -142,6 +145,9 @@ func (f *Factory) newBaseChannel(name string, group *models.Group) (*BaseChannel
 
 	return &BaseChannel{
 		Name:                name,
+		proxyManager:        f.proxyManager,
+		clientConfig:        *clientConfig,
+		streamConfig:        streamConfig,
 		Upstreams:           upstreamInfos,
 		HTTPClient:          httpClient,
 		StreamClient:        streamClient,

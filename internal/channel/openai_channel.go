@@ -120,7 +120,7 @@ func (ch *OpenAIChannel) ValidateKey(ctx context.Context, apiKey *models.APIKey,
 		utils.ApplyHeaderRules(req, group.HeaderRuleList, headerCtx)
 	}
 
-	resp, err := ch.HTTPClient.Do(req)
+	resp, err := ch.DoRequest(req, apiKey, group, false)
 	if err != nil {
 		return false, fmt.Errorf("failed to send validation request: %w", err)
 	}
@@ -134,6 +134,9 @@ func (ch *OpenAIChannel) ValidateKey(ctx context.Context, apiKey *models.APIKey,
 	// For non-200 responses, parse the body to provide a more specific error reason.
 	errorBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if group.StickyProxyEnabled {
+			return false, fmt.Errorf("%w: failed to read validation response", ErrValidationInconclusive)
+		}
 		return false, fmt.Errorf("key is invalid (status %d), but failed to read error body: %w", resp.StatusCode, err)
 	}
 

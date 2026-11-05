@@ -108,7 +108,7 @@ func (ch *TavilyChannel) ValidateKey(ctx context.Context, key *models.APIKey, gr
 	req.Header.Set("Content-Type", "application/json")
 	utils.ApplyHeaderRules(req, group.HeaderRuleList, utils.NewHeaderVariableContext(group, key))
 	ch.ModifyRequest(req, key, group)
-	resp, err := ch.HTTPClient.Do(req)
+	resp, err := ch.DoRequest(req, key, group, false)
 	if err != nil {
 		return false, fmt.Errorf("%w: %s", ErrValidationInconclusive, utils.RedactSecret(err.Error(), key.KeyValue))
 	}

@@ -78,6 +78,7 @@ func NewGroupService(
 
 // GroupCreateParams captures all fields required to create a group.
 type GroupCreateParams struct {
+	StickyProxyEnabled   bool
 	Name                 string
 	DisplayName          string
 	Description          string
@@ -97,6 +98,7 @@ type GroupCreateParams struct {
 
 // GroupUpdateParams captures updatable fields for a group.
 type GroupUpdateParams struct {
+	StickyProxyEnabled   *bool
 	Name                 *string
 	DisplayName          *string
 	Description          *string
@@ -220,6 +222,7 @@ func (s *GroupService) CreateGroup(ctx context.Context, params GroupCreateParams
 	}
 
 	group := models.Group{
+		StickyProxyEnabled:   params.StickyProxyEnabled,
 		Name:                 name,
 		DisplayName:          strings.TrimSpace(params.DisplayName),
 		Description:          strings.TrimSpace(params.Description),
@@ -347,6 +350,10 @@ func (s *GroupService) UpdateGroup(ctx context.Context, id uint, params GroupUpd
 		return nil, app_errors.ParseDBError(err)
 	}
 	changedFields := []string{"updated_at"}
+	if params.StickyProxyEnabled != nil {
+		group.StickyProxyEnabled = *params.StickyProxyEnabled
+		changedFields = append(changedFields, "sticky_proxy_enabled")
+	}
 
 	if params.KeySelectionStrategy != nil {
 		if err := validateKeySelectionStrategy(*params.KeySelectionStrategy); err != nil {

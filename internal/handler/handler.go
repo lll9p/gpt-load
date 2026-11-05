@@ -10,6 +10,7 @@ import (
 	"gpt-load/internal/config"
 	"gpt-load/internal/encryption"
 	"gpt-load/internal/i18n"
+	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/response"
 	"gpt-load/internal/services"
 	"gpt-load/internal/types"
@@ -20,6 +21,7 @@ import (
 
 // Server contains dependencies for HTTP handlers
 type Server struct {
+	ProxyManager    *outboundproxy.Manager
 	DB              *gorm.DB
 	config          types.ConfigManager
 	SettingsManager *config.SystemSettingsManager
@@ -32,6 +34,7 @@ type Server struct {
 
 // NewServerParams defines the dependencies for the NewServer constructor.
 type NewServerParams struct {
+	ProxyManager    *outboundproxy.Manager
 	DB              *gorm.DB
 	Config          types.ConfigManager
 	SettingsManager *config.SystemSettingsManager
@@ -45,6 +48,7 @@ type NewServerParams struct {
 // NewServer creates a new handler instance with explicit dependencies.
 func NewServer(params NewServerParams) *Server {
 	return &Server{
+		ProxyManager:    params.ProxyManager,
 		DB:              params.DB,
 		config:          params.Config,
 		SettingsManager: params.SettingsManager,

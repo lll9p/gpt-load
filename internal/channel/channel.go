@@ -11,6 +11,7 @@ import (
 
 // ChannelProxy defines the interface for different API channel proxies.
 type ChannelProxy interface {
+	DoRequest(req *http.Request, key *models.APIKey, group *models.Group, isStream bool) (*http.Response, error)
 	PrepareRequest(req *http.Request, body []byte, groupName string) ([]byte, error)
 	FailurePolicy(status int, transportError bool, group *models.Group) (retry, count bool)
 	// BuildUpstreamURL constructs the target URL for the upstream service.

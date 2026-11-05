@@ -463,6 +463,14 @@ function resetPage() {
                       </n-form-item>
                     </n-grid-item>
                     <n-grid-item>
+                      <n-form-item :label="t('outboundProxies.sticky')">
+                        {{
+                          group?.sticky_proxy_enabled
+                            ? t("outboundProxies.enabled")
+                            : t("outboundProxies.disabled")
+                        }}
+                      </n-form-item>
+                      <p>{{ t("outboundProxies.stickyHelp") }}</p>
                       <n-form-item :label="`${t('keys.sortOrder')}：`">
                         {{ group?.sort }}
                       </n-form-item>

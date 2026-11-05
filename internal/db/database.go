@@ -22,13 +22,17 @@ func NewDB(configManager types.ConfigManager) (*gorm.DB, error) {
 		return nil, fmt.Errorf("DATABASE_DSN is not configured")
 	}
 
-	var newLogger logger.Interface
-	if configManager.GetLogConfig().Level == "debug" {
-		newLogger = logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
-			SlowThreshold: time.Second, LogLevel: logger.Info,
-			IgnoreRecordNotFoundError: true, Colorful: true,
-		})
+	// SQL parameters can contain API keys and outbound proxy credentials.
+	logConfig := logger.Config{
+		SlowThreshold: 200 * time.Millisecond, LogLevel: logger.Warn,
+		Colorful: true, ParameterizedQueries: true,
 	}
+	if configManager.GetLogConfig().Level == "debug" {
+		logConfig.SlowThreshold = time.Second
+		logConfig.LogLevel = logger.Info
+		logConfig.IgnoreRecordNotFoundError = true
+	}
+	newLogger := logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logConfig)
 
 	var dialector gorm.Dialector
 	isPostgres := strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://")

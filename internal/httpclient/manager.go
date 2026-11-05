@@ -34,6 +34,7 @@ type Config struct {
 // ensuring that clients with the same configuration are reused.
 type HTTPClientManager struct {
 	clients map[string]*http.Client
+	proxies map[string]string
 	lock    sync.RWMutex
 }
 
@@ -41,6 +42,7 @@ type HTTPClientManager struct {
 func NewHTTPClientManager() *HTTPClientManager {
 	return &HTTPClientManager{
 		clients: make(map[string]*http.Client),
+		proxies: make(map[string]string),
 	}
 }
 
@@ -89,7 +91,7 @@ func (m *HTTPClientManager) GetClient(config *Config) *http.Client {
 	if config.ProxyURL != "" {
 		proxyURL, err := url.Parse(config.ProxyURL)
 		if err != nil {
-			logrus.Warnf("Invalid proxy URL '%s' provided, falling back to environment settings: %v", config.ProxyURL, err)
+			logrus.Warn("Invalid proxy URL provided, falling back to environment settings")
 			transport.Proxy = http.ProxyFromEnvironment
 		} else {
 			transport.Proxy = http.ProxyURL(proxyURL)
@@ -105,6 +107,7 @@ func (m *HTTPClientManager) GetClient(config *Config) *http.Client {
 	}
 
 	m.clients[fingerprint] = newClient
+	m.proxies[fingerprint] = config.ProxyURL
 	return newClient
 }
 
@@ -158,4 +161,17 @@ func (c *Config) getFingerprint() string {
 		c.ExpectContinueTimeout.Seconds(),
 		c.ProxyURL,
 	)
+}
+
+// EvictProxy closes idle connections without interrupting active requests.
+func (m *HTTPClientManager) EvictProxy(proxyURL string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	for fingerprint, proxy := range m.proxies {
+		if proxy == proxyURL {
+			m.clients[fingerprint].CloseIdleConnections()
+			delete(m.clients, fingerprint)
+			delete(m.proxies, fingerprint)
+		}
+	}
 }

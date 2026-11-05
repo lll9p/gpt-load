@@ -11,9 +11,11 @@ import (
 	"gpt-load/internal/types"
 	"gpt-load/internal/utils"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // RunMigrateKeys handles the migrate-keys command entry point
@@ -26,6 +28,7 @@ func RunMigrateKeys(args []string) {
 	// Set custom usage message
 	migrateCmd.Usage = func() {
 		fmt.Println("GPT-Load Key Migration Tool")
+		fmt.Println("Migrates API keys and outbound proxy credentials together.")
 		fmt.Println()
 		fmt.Println("Usage:")
 		fmt.Println("  Enable encryption: gpt-load migrate-keys --to new-key")
@@ -94,6 +97,7 @@ type MigrateKeysCommand struct {
 	configManager types.ConfigManager
 	fromKey       string
 	toKey         string
+	hasProxyTable bool
 }
 
 // NewMigrateKeysCommand creates a new migration command
@@ -108,6 +112,18 @@ func NewMigrateKeysCommand(db *gorm.DB, configManager types.ConfigManager, fromK
 
 // Execute performs the key migration
 func (cmd *MigrateKeysCommand) Execute() error {
+	tables, err := cmd.db.Migrator().GetTables()
+	if err != nil {
+		return fmt.Errorf("failed to inspect database tables: %w", err)
+	}
+	cmd.hasProxyTable = false
+	for _, table := range tables {
+		if table == "outbound_proxies" {
+			cmd.hasProxyTable = true
+			break
+		}
+	}
+
 	if err := migrations.HandleLegacyIndexes(cmd.db); err != nil {
 		return err
 	}
@@ -210,6 +226,10 @@ func (cmd *MigrateKeysCommand) preCheck() error {
 		return fmt.Errorf("failed to create current encryption service: %w", err)
 	}
 
+	if err := cmd.checkProxies(currentService); err != nil {
+		return err
+	}
+
 	// Check number of keys in database
 	var totalCount int64
 	if err := cmd.db.Model(&models.APIKey{}).Count(&totalCount).Error; err != nil {
@@ -265,6 +285,14 @@ func (cmd *MigrateKeysCommand) preCheck() error {
 // detectIfAlreadyEncrypted checks if data is already encrypted to prevent double encryption
 func (cmd *MigrateKeysCommand) detectIfAlreadyEncrypted() error {
 	logrus.Info("Detecting if data is already encrypted...")
+
+	noop, err := encryption.NewService("")
+	if err != nil {
+		return err
+	}
+	if err := cmd.checkProxies(noop); err != nil {
+		return err
+	}
 
 	// Sample check
 	var sampleKeys []models.APIKey
@@ -368,6 +396,9 @@ func (cmd *MigrateKeysCommand) createBackupTableAndMigrate() error {
 		return fmt.Errorf("failed to get key count: %w", err)
 	}
 
+	if err := cmd.migrateProxies(oldService, newService); err != nil {
+		return err
+	}
 	if totalCount == 0 {
 		logrus.Info("No keys to migrate")
 		return nil
@@ -444,6 +475,16 @@ func (cmd *MigrateKeysCommand) createTempTable() error {
 		return fmt.Errorf("failed to create temp_migration table: %w", err)
 	}
 
+	if cmd.hasProxyTable {
+		if err := cmd.db.Exec("DROP TABLE IF EXISTS temp_proxy_migration").Error; err != nil {
+			return fmt.Errorf("failed to drop proxy migration table")
+		}
+		proxySQL := strings.ReplaceAll(createTableSQL, "temp_migration", "temp_proxy_migration")
+		if err := cmd.db.Exec(proxySQL).Error; err != nil {
+			return fmt.Errorf("failed to create proxy migration table")
+		}
+	}
+
 	// Create index for better UPDATE performance (not needed for PRIMARY KEY but helps with JOIN)
 	// Skip index creation since id is already PRIMARY KEY which creates an implicit index
 
@@ -456,6 +497,10 @@ func (cmd *MigrateKeysCommand) dropTempTable() error {
 
 	if err := cmd.db.Exec("DROP TABLE IF EXISTS temp_migration").Error; err != nil {
 		return fmt.Errorf("failed to drop temp_migration table: %w", err)
+	}
+
+	if err := cmd.db.Exec("DROP TABLE IF EXISTS temp_proxy_migration").Error; err != nil {
+		return fmt.Errorf("failed to drop proxy migration table")
 	}
 
 	logrus.Info("Temporary table dropped successfully")
@@ -560,6 +605,10 @@ func (cmd *MigrateKeysCommand) verifyTempColumns() error {
 		return fmt.Errorf("failed to create verification encryption service: %w", err)
 	}
 
+	if err := cmd.verifyProxies(newService); err != nil {
+		return err
+	}
+
 	// Get total count
 	var totalCount int64
 	if err := cmd.db.Model(&models.APIKey{}).Count(&totalCount).Error; err != nil {
@@ -613,6 +662,97 @@ func (cmd *MigrateKeysCommand) verifyTempColumns() error {
 	return nil
 }
 
+// visitProxies keeps proxy credentials out of SQL error logs and processes bounded batches.
+func (cmd *MigrateKeysCommand) visitProxies(visit func(*gorm.DB, models.OutboundProxy) error) error {
+	db := cmd.db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
+	if !cmd.hasProxyTable {
+		return nil
+	}
+	var lastID uint
+	for {
+		var proxies []models.OutboundProxy
+		if err := db.Where("id > ?", lastID).Order("id").Limit(migrationBatchSize).Find(&proxies).Error; err != nil {
+			return fmt.Errorf("failed to read outbound proxies")
+		}
+		if len(proxies) == 0 {
+			return nil
+		}
+		for _, proxy := range proxies {
+			if err := visit(db, proxy); err != nil {
+				return err
+			}
+		}
+		lastID = proxies[len(proxies)-1].ID
+	}
+}
+
+// Hash verification also rejects ciphertext when the source service is noop.
+func (cmd *MigrateKeysCommand) checkProxies(service encryption.Service) error {
+	return cmd.visitProxies(func(_ *gorm.DB, proxy models.OutboundProxy) error {
+		plain, err := service.Decrypt(proxy.URL)
+		if err != nil || service.Hash(plain) != proxy.URLHash {
+			return fmt.Errorf("outbound proxy ID %d: source encryption/hash mismatch; check --from", proxy.ID)
+		}
+		return nil
+	})
+}
+
+func (cmd *MigrateKeysCommand) migrateProxies(oldService, newService encryption.Service) error {
+	return cmd.visitProxies(func(db *gorm.DB, proxy models.OutboundProxy) error {
+		plain, err := oldService.Decrypt(proxy.URL)
+		if err != nil || oldService.Hash(plain) != proxy.URLHash {
+			return fmt.Errorf("outbound proxy ID %d: source encryption/hash mismatch", proxy.ID)
+		}
+		value, err := newService.Encrypt(plain)
+		if err != nil {
+			return fmt.Errorf("outbound proxy ID %d: encryption failed", proxy.ID)
+		}
+		record := struct {
+			ID          uint
+			KeyValueNew string
+			KeyHashNew  string
+		}{proxy.ID, value, newService.Hash(plain)}
+		if err := db.Table("temp_proxy_migration").Create(&record).Error; err != nil {
+			return fmt.Errorf("outbound proxy ID %d: temporary insertion failed", proxy.ID)
+		}
+		return nil
+	})
+}
+
+func (cmd *MigrateKeysCommand) verifyProxies(newService encryption.Service) error {
+	oldService, _, err := cmd.createMigrationServices()
+	if err != nil {
+		return err
+	}
+	var verified int64
+	if err := cmd.visitProxies(func(db *gorm.DB, proxy models.OutboundProxy) error {
+		var record struct {
+			ID          uint
+			KeyValueNew string
+			KeyHashNew  string
+		}
+		if err := db.Table("temp_proxy_migration").Where("id = ?", proxy.ID).Take(&record).Error; err != nil {
+			return fmt.Errorf("outbound proxy ID %d: temporary data missing", proxy.ID)
+		}
+		original, oldErr := oldService.Decrypt(proxy.URL)
+		plain, newErr := newService.Decrypt(record.KeyValueNew)
+		if oldErr != nil || newErr != nil || plain != original || newService.Hash(plain) != record.KeyHashNew {
+			return fmt.Errorf("outbound proxy ID %d: temporary data verification failed", proxy.ID)
+		}
+		verified++
+		return nil
+	}); err != nil {
+		return err
+	}
+	if cmd.hasProxyTable {
+		var count int64
+		if err := cmd.db.Table("temp_proxy_migration").Count(&count).Error; err != nil || count != verified {
+			return fmt.Errorf("outbound proxy migration row count mismatch")
+		}
+	}
+	return nil
+}
+
 // switchColumns performs atomic update from temporary table to original table
 func (cmd *MigrateKeysCommand) switchColumns() error {
 	logrus.Info("Updating original table from temporary table...")
@@ -649,6 +789,22 @@ func (cmd *MigrateKeysCommand) switchColumns() error {
 		logrus.Infof("Executing cross-table UPDATE for %s...", dbType)
 		if err := tx.Exec(updateSQL).Error; err != nil {
 			return fmt.Errorf("failed to update api_keys from temp_migration: %w", err)
+		}
+
+		if cmd.hasProxyTable {
+			var count int64
+			if err := tx.Model(&models.OutboundProxy{}).Count(&count).Error; err != nil {
+				return fmt.Errorf("failed to count outbound proxies")
+			}
+			result := tx.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)}).Exec(`
+				UPDATE outbound_proxies
+				SET url = (SELECT key_value_new FROM temp_proxy_migration WHERE temp_proxy_migration.id = outbound_proxies.id),
+				    url_hash = (SELECT key_hash_new FROM temp_proxy_migration WHERE temp_proxy_migration.id = outbound_proxies.id)
+				WHERE EXISTS (SELECT 1 FROM temp_proxy_migration WHERE temp_proxy_migration.id = outbound_proxies.id)
+			`)
+			if result.Error != nil || result.RowsAffected != count {
+				return fmt.Errorf("failed to switch all outbound proxies")
+			}
 		}
 
 		logrus.Info("Successfully updated original table with migrated data")

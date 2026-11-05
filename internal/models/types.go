@@ -52,8 +52,20 @@ type HeaderRule struct {
 	Action string `json:"action"` // "set" or "remove"
 }
 
+// OutboundProxy stores encrypted global outbound proxy URLs.
+type OutboundProxy struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name      string    `gorm:"type:varchar(255);not null" json:"name"`
+	URL       string    `gorm:"type:text;not null" json:"url"`
+	URLHash   string    `gorm:"type:varchar(128);index" json:"-"`
+	Enabled   bool      `gorm:"not null;default:false" json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // Group 对应 groups 表
 type Group struct {
+	StickyProxyEnabled   bool                 `gorm:"not null;default:false" json:"sticky_proxy_enabled"`
 	ID                   uint                 `gorm:"primaryKey;autoIncrement" json:"id"`
 	EffectiveConfig      types.SystemSettings `gorm:"-" json:"effective_config,omitempty"`
 	Name                 string               `gorm:"type:varchar(255);not null;unique" json:"name"`
@@ -86,17 +98,19 @@ type Group struct {
 
 // APIKey 对应 api_keys 表
 type APIKey struct {
-	ID           uint       `gorm:"primaryKey;autoIncrement;index:idx_api_keys_group_last_used_id,priority:3" json:"id"`
-	KeyValue     string     `gorm:"type:text;not null" json:"key_value"`
-	KeyHash      string     `gorm:"type:varchar(128);index" json:"key_hash"`
-	GroupID      uint       `gorm:"not null;index;index:idx_api_keys_group_last_used_id,priority:1" json:"group_id"`
-	Status       string     `gorm:"type:varchar(50);not null;default:'active';index" json:"status"`
-	Notes        string     `gorm:"type:varchar(255);default:''" json:"notes"`
-	RequestCount int64      `gorm:"not null;default:0" json:"request_count"`
-	FailureCount int64      `gorm:"not null;default:0" json:"failure_count"`
-	LastUsedAt   *time.Time `gorm:"index:idx_api_keys_group_last_used_id,priority:2" json:"last_used_at"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	OutboundProxyID   uint       `gorm:"-" json:"outbound_proxy_id,omitempty"`
+	OutboundProxyName string     `gorm:"-" json:"outbound_proxy_name,omitempty"`
+	ID                uint       `gorm:"primaryKey;autoIncrement;index:idx_api_keys_group_last_used_id,priority:3" json:"id"`
+	KeyValue          string     `gorm:"type:text;not null" json:"key_value"`
+	KeyHash           string     `gorm:"type:varchar(128);index" json:"key_hash"`
+	GroupID           uint       `gorm:"not null;index;index:idx_api_keys_group_last_used_id,priority:1" json:"group_id"`
+	Status            string     `gorm:"type:varchar(50);not null;default:'active';index" json:"status"`
+	Notes             string     `gorm:"type:varchar(255);default:''" json:"notes"`
+	RequestCount      int64      `gorm:"not null;default:0" json:"request_count"`
+	FailureCount      int64      `gorm:"not null;default:0" json:"failure_count"`
+	LastUsedAt        *time.Time `gorm:"index:idx_api_keys_group_last_used_id,priority:2" json:"last_used_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // RequestType 请求类型常量
