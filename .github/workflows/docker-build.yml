@@ -3,7 +3,7 @@ name: Build Docker Image
 on:
   push:
     tags:
-      - "v1.*"
+      - "v*"
 jobs:
   build_docker_image:
     name: Build Docker Image
@@ -42,14 +42,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            tbphp/gpt-load
+            lll9p/gpt-load-lite
             ghcr.io/${{ github.repository }}
           flavor: |
-            latest=false
+            latest=${{ !contains(github.ref_name, '-') }}
           tags: |
             type=ref,event=tag
             type=raw,value=beta,enable=${{ contains(github.ref, '-beta') }}
-            type=raw,value=1,enable=${{ !contains(github.ref, '-') }}
 
       - name: Build and push Docker image
         id: build
