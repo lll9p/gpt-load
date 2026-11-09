@@ -14,10 +14,10 @@ export interface VersionInfo {
   hasUpdate: boolean;
   releaseUrl: string | null;
   lastCheckTime: number;
-  status: "checking" | "latest" | "update-available" | "error";
+  status: "checking" | "latest" | "update-available" | "unreleased" | "error";
 }
 
-const CACHE_KEY = "gpt-load-version-info";
+const CACHE_KEY = "lll9p-gpt-load-lite-version-info";
 const CACHE_DURATION = 30 * 60 * 1000;
 
 class VersionService {
@@ -98,7 +98,7 @@ class VersionService {
   private async fetchLatestVersion(): Promise<GitHubRelease | null> {
     try {
       const response = await axios.get(
-        "https://api.github.com/repos/tbphp/gpt-load/releases/latest",
+        "https://api.github.com/repos/lll9p/gpt-load-lite/releases/latest",
         {
           timeout: 10000,
           headers: {
@@ -107,14 +107,20 @@ class VersionService {
         }
       );
 
-      if (response.status === 200 && response.data) {
-        return response.data;
+      if (
+        response.status !== 200 ||
+        typeof response.data?.tag_name !== "string" ||
+        !response.data.tag_name.trim()
+      ) {
+        throw new Error("Invalid GitHub release response");
       }
 
-      return null;
+      return response.data;
     } catch (error) {
-      console.warn("Failed to fetch latest version from GitHub:", error);
-      return null;
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return null;
+      }
+      throw error;
     }
   }
 
@@ -150,12 +156,12 @@ class VersionService {
         versionInfo.isLatest = comparison >= 0;
         versionInfo.hasUpdate = comparison < 0;
         versionInfo.status = comparison < 0 ? "update-available" : "latest";
-
-        // 只在成功时缓存结果
-        this.setCachedVersionInfo(versionInfo);
       } else {
-        versionInfo.status = "error";
+        versionInfo.status = "unreleased";
       }
+
+      // 只缓存已确认的发布状态，不缓存请求失败
+      this.setCachedVersionInfo(versionInfo);
     } catch (error) {
       console.warn("Version check failed:", error);
       versionInfo.status = "error";

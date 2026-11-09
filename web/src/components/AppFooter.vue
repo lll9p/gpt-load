@@ -2,7 +2,6 @@
 import { versionService, type VersionInfo } from "@/services/version";
 import {
   BugOutline,
-  ChatbubbleOutline,
   CheckmarkCircleOutline,
   DocumentTextOutline,
   LogoGithub,
@@ -11,13 +10,13 @@ import {
   WarningOutline,
 } from "@vicons/ionicons5";
 import { NIcon, NTooltip } from "naive-ui";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 
 const { t } = useI18n();
 
 const versionInfo = ref<VersionInfo>({
-  currentVersion: "0.1.0",
+  currentVersion: versionService.getCurrentVersion(),
   latestVersion: null,
   isLatest: false,
   hasUpdate: false,
@@ -29,7 +28,7 @@ const versionInfo = ref<VersionInfo>({
 const isChecking = ref(false);
 
 // 版本状态配置
-const statusConfig = {
+const statusConfig = computed(() => ({
   checking: {
     color: "#0066cc",
     icon: TimeOutline,
@@ -45,12 +44,17 @@ const statusConfig = {
     icon: WarningOutline,
     text: t("footer.updateAvailable"),
   },
+  unreleased: {
+    color: "#808080",
+    icon: TimeOutline,
+    text: t("footer.noRelease"),
+  },
   error: {
     color: "#d03050",
     icon: WarningOutline,
     text: t("footer.checkFailed"),
   },
-};
+}));
 
 const formatVersion = (version: string): string => {
   return version.startsWith("v") ? version : `v${version}`;
@@ -92,8 +96,12 @@ onMounted(() => {
       <!-- 主要信息区 -->
       <div class="footer-main">
         <span class="project-info">
-          <a href="https://github.com/tbphp/gpt-load" target="_blank" rel="noopener noreferrer">
-            <b>GPT-Load</b>
+          <a
+            href="https://github.com/lll9p/gpt-load-lite"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <b>GPT-Load Lite</b>
           </a>
         </span>
 
@@ -135,7 +143,7 @@ onMounted(() => {
           <n-tooltip trigger="hover" placement="top">
             <template #trigger>
               <a
-                href="https://www.gpt-load.com/docs"
+                href="https://github.com/lll9p/gpt-load-lite"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="footer-link"
@@ -144,13 +152,13 @@ onMounted(() => {
                 <span>{{ t("footer.docs") }}</span>
               </a>
             </template>
-            {{ t("footer.officialDocs") }}
+            {{ t("footer.docs") }}
           </n-tooltip>
 
           <n-tooltip trigger="hover" placement="top">
             <template #trigger>
               <a
-                href="https://github.com/tbphp/gpt-load"
+                href="https://github.com/lll9p/gpt-load-lite"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="footer-link"
@@ -165,7 +173,7 @@ onMounted(() => {
           <n-tooltip trigger="hover" placement="top">
             <template #trigger>
               <a
-                href="https://github.com/tbphp/gpt-load/issues"
+                href="https://github.com/lll9p/gpt-load-lite/issues"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="footer-link"
@@ -180,7 +188,7 @@ onMounted(() => {
           <n-tooltip trigger="hover" placement="top">
             <template #trigger>
               <a
-                href="https://github.com/tbphp/gpt-load/graphs/contributors"
+                href="https://github.com/lll9p/gpt-load-lite/graphs/contributors"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="footer-link"
@@ -191,21 +199,6 @@ onMounted(() => {
             </template>
             {{ t("footer.viewContributors") }}
           </n-tooltip>
-
-          <n-tooltip trigger="hover" placement="top">
-            <template #trigger>
-              <a
-                href="https://t.me/+GHpy5SwEllg3MTUx"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="footer-link"
-              >
-                <n-icon :component="ChatbubbleOutline" :size="14" class="link-icon" />
-                <span>Telegram</span>
-              </a>
-            </template>
-            {{ t("footer.joinGroup") }}
-          </n-tooltip>
         </div>
 
         <n-divider vertical />
@@ -213,17 +206,24 @@ onMounted(() => {
         <!-- 版权信息 -->
         <div class="copyright-container">
           <span class="copyright-text">
-            © 2025 by
+            © 2026 by
             <a
-              href="https://github.com/tbphp"
+              href="https://github.com/lll9p/gpt-load-lite"
               target="_blank"
               rel="noopener noreferrer"
               class="author-link"
             >
-              tbphp
+              lll9p
             </a>
           </span>
-          <span class="license-text">MIT License</span>
+          <a
+            href="https://github.com/lll9p/gpt-load-lite/blob/main/LICENSE"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="license-text"
+          >
+            MIT License
+          </a>
         </div>
       </div>
     </div>

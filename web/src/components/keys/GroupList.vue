@@ -14,6 +14,8 @@ interface Props {
   groups: Group[];
   selectedGroup: Group | null;
   loading?: boolean;
+  proxyPoolStatus: "loading" | "ready" | "error";
+  enabledProxyCount: number;
 }
 
 interface Emits {
@@ -425,13 +427,21 @@ function handleDragEnd() {
         </n-button>
       </div>
     </n-card>
-    <group-form-modal v-model:show="showGroupModal" @success="handleGroupCreated" />
+    <group-form-modal
+      v-model:show="showGroupModal"
+      :proxy-pool-status="proxyPoolStatus"
+      :enabled-proxy-count="enabledProxyCount"
+      @success="handleGroupCreated"
+    />
   </div>
 </template>
 
 <style scoped>
-:deep(.n-card__content) {
-  height: 100%;
+.group-list-card :deep(.n-card__content) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .groups-section::-webkit-scrollbar {
@@ -456,12 +466,13 @@ function handleDragEnd() {
 }
 
 .search-section {
+  flex-shrink: 0;
   height: 41px;
 }
 
 .groups-section {
   flex: 1;
-  height: calc(100% - 120px);
+  min-height: 0;
   overflow: auto;
 }
 
@@ -615,6 +626,7 @@ function handleDragEnd() {
 }
 
 .add-section {
+  flex-shrink: 0;
   border-top: 1px solid var(--border-color);
   padding-top: 12px;
   display: flex;

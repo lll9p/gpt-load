@@ -25,6 +25,8 @@ import {
   NSelect,
   NSpace,
   NSpin,
+  NText,
+  NTooltip,
   useDialog,
   type MessageReactive,
 } from "naive-ui";
@@ -41,12 +43,16 @@ interface KeyRow extends APIKey {
 
 interface Props {
   selectedGroup: Group | null;
+  proxyPoolStatus: "loading" | "ready" | "error";
+  enabledProxyCount: number;
 }
 
 const props = defineProps<Props>();
 
 const keys = ref<KeyRow[]>([]);
 const loading = ref(false);
+const proxyMappingsFresh = ref(false);
+let keysRequestId = 0;
 const searchText = ref("");
 const statusFilter = ref<"all" | "active" | "invalid">("all");
 const currentPage = ref(1);
@@ -126,6 +132,16 @@ watch(statusFilter, async () => {
   }
 });
 
+watch(
+  () => props.proxyPoolStatus,
+  async status => {
+    proxyMappingsFresh.value = false;
+    if (status === "ready" && props.selectedGroup?.sticky_proxy_enabled) {
+      await loadKeys();
+    }
+  }
+);
+
 // 监听任务完成事件，自动刷新密钥列表
 watch(
   () => appState.groupDataRefreshTrigger,
@@ -195,6 +211,8 @@ async function loadKeys() {
     return;
   }
 
+  const requestId = ++keysRequestId;
+  proxyMappingsFresh.value = false;
   try {
     loading.value = true;
     const result = await keysApi.getGroupKeys({
@@ -204,11 +222,17 @@ async function loadKeys() {
       status: statusFilter.value === "all" ? undefined : (statusFilter.value as KeyStatus),
       key_value: searchText.value.trim() || undefined,
     });
+    if (requestId !== keysRequestId) {
+      return;
+    }
     keys.value = result.items as KeyRow[];
     total.value = result.pagination.total_items;
     totalPages.value = result.pagination.total_pages;
+    proxyMappingsFresh.value = props.proxyPoolStatus === "ready";
   } finally {
-    loading.value = false;
+    if (requestId === keysRequestId) {
+      loading.value = false;
+    }
   }
 }
 
@@ -741,7 +765,28 @@ function resetPage() {
             </div>
 
             <div v-if="selectedGroup?.sticky_proxy_enabled" class="key-stats">
-              {{ t("outboundProxies.current") }}: {{ key.outbound_proxy_name || "-" }}
+              <n-tooltip trigger="hover">
+                <template #trigger>
+                  <span>{{ t("outboundProxies.current") }}</span>
+                </template>
+                {{ t("outboundProxies.mappingHelp") }}
+              </n-tooltip>
+              :
+              <n-text v-if="proxyPoolStatus === 'ready' && enabledProxyCount === 0" type="warning">
+                {{ t("outboundProxies.noEnabledProxies") }}
+              </n-text>
+              <n-tooltip
+                v-else-if="
+                  proxyPoolStatus === 'ready' && proxyMappingsFresh && key.outbound_proxy_name
+                "
+                trigger="hover"
+              >
+                <template #trigger>
+                  <span class="proxy-mapping-name">{{ key.outbound_proxy_name }}</span>
+                </template>
+                {{ key.outbound_proxy_name }}
+              </n-tooltip>
+              <span v-else>{{ t("outboundProxies.mappingUnknown") }}</span>
             </div>
 
             <!-- 统计信息 + 操作按钮行 -->
@@ -866,6 +911,15 @@ function resetPage() {
 </template>
 
 <style scoped>
+.proxy-mapping-name {
+  display: inline-block;
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .key-table-container {
   background: var(--card-bg-solid);
   border-radius: 8px;

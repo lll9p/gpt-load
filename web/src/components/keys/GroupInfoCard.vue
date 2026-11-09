@@ -6,6 +6,7 @@ import { copy } from "@/utils/clipboard";
 import { getGroupDisplayName, maskProxyKeys } from "@/utils/display";
 import { CopyOutline, EyeOffOutline, EyeOutline, Pencil, Trash } from "@vicons/ionicons5";
 import {
+  NAlert,
   NButton,
   NButtonGroup,
   NCard,
@@ -31,6 +32,8 @@ const { t } = useI18n();
 
 interface Props {
   group: Group | null;
+  proxyPoolStatus: "loading" | "ready" | "error";
+  enabledProxyCount: number;
 }
 
 interface Emits {
@@ -470,7 +473,35 @@ function resetPage() {
                             : t("outboundProxies.disabled")
                         }}
                       </n-form-item>
-                      <p>{{ t("outboundProxies.stickyHelp") }}</p>
+                      <p>
+                        {{
+                          t(
+                            group?.sticky_proxy_enabled
+                              ? "outboundProxies.groupStickyOnHelp"
+                              : "outboundProxies.groupStickyOffHelp"
+                          )
+                        }}
+                      </p>
+                      <template v-if="group?.sticky_proxy_enabled">
+                        <n-alert
+                          v-if="proxyPoolStatus === 'ready' && enabledProxyCount === 0"
+                          type="warning"
+                        >
+                          {{ t("outboundProxies.groupNoEnabled") }}
+                        </n-alert>
+                        <p v-else-if="proxyPoolStatus === 'ready'">
+                          {{ t("outboundProxies.groupPoolCount", { count: enabledProxyCount }) }}
+                        </p>
+                        <p v-else>
+                          {{
+                            t(
+                              proxyPoolStatus === "loading"
+                                ? "outboundProxies.groupPoolLoading"
+                                : "outboundProxies.groupPoolUnknown"
+                            )
+                          }}
+                        </p>
+                      </template>
                       <n-form-item :label="`${t('keys.sortOrder')}：`">
                         {{ group?.sort }}
                       </n-form-item>
@@ -643,7 +674,13 @@ function resetPage() {
       </div>
     </n-card>
 
-    <group-form-modal v-model:show="showEditModal" :group="group" @success="handleGroupEdited" />
+    <group-form-modal
+      v-model:show="showEditModal"
+      :group="group"
+      :proxy-pool-status="proxyPoolStatus"
+      :enabled-proxy-count="enabledProxyCount"
+      @success="handleGroupEdited"
+    />
     <group-copy-modal
       v-model:show="showCopyModal"
       :source-group="group"

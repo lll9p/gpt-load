@@ -8,6 +8,12 @@ export const outboundProxiesApi = {
     const res = await http.get("/outbound-proxies");
     return res.data || [];
   },
+  async batch(
+    items: Array<{ url: string; enabled: boolean }>
+  ): Promise<{ created: number; skipped: number }> {
+    const res = await http.post("/outbound-proxies/batch", { items }, { hideMessage: true });
+    return res.data;
+  },
   async create(data: OutboundProxyInput): Promise<void> {
     await http.post("/outbound-proxies", data);
   },

@@ -196,6 +196,96 @@ func (m *Manager) selectLocked(keyHash string) (models.OutboundProxy, error) {
 	}
 	return best, nil
 }
+
+// IndexedValidationError identifies an invalid batch item without exposing its contents.
+type IndexedValidationError struct {
+	Index int
+}
+
+func (e *IndexedValidationError) Error() string { return "invalid outbound proxy batch item" }
+
+type BatchItem struct {
+	URL     string
+	Enabled *bool
+}
+
+type BatchResult struct {
+	Created int `json:"created"`
+	Skipped int `json:"skipped"`
+}
+
+func (m *Manager) CreateBatch(items []BatchItem) (*BatchResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(items) == 0 || len(items) > 500 {
+		return nil, apierrors.ErrValidation
+	}
+	// Validate every item before looking for duplicates or writing anything.
+	prepared := make([]models.OutboundProxy, len(items))
+	for i, item := range items {
+		normalized, err := normalize(strings.TrimSpace(item.URL))
+		if err != nil {
+			return nil, &IndexedValidationError{Index: i}
+		}
+		u, err := url.Parse(normalized)
+		if err != nil || utf8.RuneCountInString(u.Host) > 255 {
+			return nil, &IndexedValidationError{Index: i}
+		}
+		enabled := true
+		if item.Enabled != nil {
+			enabled = *item.Enabled
+		}
+		prepared[i] = models.OutboundProxy{Name: u.Host, URL: normalized, URLHash: m.enc.Hash(normalized), Enabled: enabled}
+	}
+	result := &BatchResult{}
+	var rows []models.OutboundProxy
+	err := m.db.Transaction(func(tx *gorm.DB) error {
+		hashes := make([]string, len(prepared))
+		for i, item := range prepared {
+			hashes[i] = item.URLHash
+		}
+		var existing []string
+		if err := tx.Model(&models.OutboundProxy{}).Where("url_hash IN ?", hashes).Pluck("url_hash", &existing).Error; err != nil {
+			return apierrors.ErrDatabase
+		}
+		seen := make(map[string]bool, len(existing)+len(prepared))
+		for _, hash := range existing {
+			seen[hash] = true
+		}
+		inserts := make([]models.OutboundProxy, 0, len(prepared))
+		for _, item := range prepared {
+			if seen[item.URLHash] {
+				result.Skipped++
+				continue
+			}
+			seen[item.URLHash] = true
+			ciphertext, err := m.enc.Encrypt(item.URL)
+			if err != nil {
+				return apierrors.ErrInternalServer
+			}
+			item.URL = ciphertext
+			inserts = append(inserts, item)
+		}
+		result.Created = len(inserts)
+		if result.Created == 0 {
+			return nil
+		}
+		if err := tx.Select("Name", "URL", "URLHash", "Enabled", "CreatedAt", "UpdatedAt").CreateInBatches(&inserts, 100).Error; err != nil {
+			return apierrors.ErrDatabase
+		}
+		var err error
+		rows, err = m.load(tx)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result.Created > 0 {
+		m.publish(rows)
+	}
+	return result, nil
+}
+
 func (m *Manager) Create(name, raw string, enabled bool) (*models.OutboundProxy, error) {
 	return m.mutate(0, &name, &raw, &enabled, false)
 }

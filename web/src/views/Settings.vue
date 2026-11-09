@@ -102,7 +102,6 @@ function generateValidationRules(item: Setting): FormItemRule[] {
 
 <template>
   <n-space vertical>
-    <outbound-proxy-manager />
     <n-form ref="formRef" :model="form" label-placement="top">
       <n-space vertical>
         <n-card
@@ -171,6 +170,8 @@ function generateValidationRules(item: Setting): FormItemRule[] {
         </n-card>
       </n-space>
     </n-form>
+
+    <outbound-proxy-manager />
 
     <div
       v-if="settingList.length > 0"

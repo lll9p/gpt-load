@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { keysApi } from "@/api/keys";
+import { outboundProxiesApi } from "@/api/outbound-proxies";
+import { NButton } from "naive-ui";
+import { useI18n } from "vue-i18n";
 import EncryptionMismatchAlert from "@/components/EncryptionMismatchAlert.vue";
 import GroupInfoCard from "@/components/keys/GroupInfoCard.vue";
 import GroupList from "@/components/keys/GroupList.vue";
@@ -8,6 +11,9 @@ import type { Group } from "@/types/models";
 import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+const { t } = useI18n();
+const proxyPoolStatus = ref<"loading" | "ready" | "error">("loading");
+const enabledProxyCount = ref(0);
 const groups = ref<Group[]>([]);
 const loading = ref(false);
 const selectedGroup = ref<Group | null>(null);
@@ -15,8 +21,21 @@ const router = useRouter();
 const route = useRoute();
 
 onMounted(async () => {
+  void loadProxyPool();
   await loadGroups();
 });
+
+async function loadProxyPool() {
+  proxyPoolStatus.value = "loading";
+  try {
+    const proxies = await outboundProxiesApi.list();
+    enabledProxyCount.value = proxies.filter(proxy => proxy.enabled).length;
+    proxyPoolStatus.value = "ready";
+  } catch {
+    // The shared HTTP client already reports request failures.
+    proxyPoolStatus.value = "error";
+  }
+}
 
 async function loadGroups() {
   try {
@@ -74,12 +93,23 @@ async function refreshGroupsAndSelect(targetGroupId?: number, selectFirst = true
 
 <template>
   <div>
+    <n-button
+      size="small"
+      :loading="proxyPoolStatus === 'loading'"
+      :disabled="proxyPoolStatus === 'loading'"
+      style="margin-bottom: 8px"
+      @click="loadProxyPool"
+    >
+      {{ t("outboundProxies.groupRefreshPool") }}
+    </n-button>
     <!-- 加密配置错误警告 -->
     <encryption-mismatch-alert style="margin-bottom: 16px" />
 
     <div class="keys-container">
       <div class="sidebar">
         <group-list
+          :proxy-pool-status="proxyPoolStatus"
+          :enabled-proxy-count="enabledProxyCount"
           :groups="groups"
           :selected-group="selectedGroup"
           :loading="loading"
@@ -95,6 +125,8 @@ async function refreshGroupsAndSelect(targetGroupId?: number, selectFirst = true
         <div class="group-info">
           <group-info-card
             :group="selectedGroup"
+            :proxy-pool-status="proxyPoolStatus"
+            :enabled-proxy-count="enabledProxyCount"
             @refresh="() => refreshGroupsAndSelect()"
             @delete="() => refreshGroupsAndSelect(undefined, true)"
             @copy-success="group => refreshGroupsAndSelect(group.id)"
@@ -102,7 +134,11 @@ async function refreshGroupsAndSelect(targetGroupId?: number, selectFirst = true
         </div>
 
         <div class="key-table-section">
-          <key-table :selected-group="selectedGroup" />
+          <key-table
+            :selected-group="selectedGroup"
+            :proxy-pool-status="proxyPoolStatus"
+            :enabled-proxy-count="enabledProxyCount"
+          />
         </div>
       </div>
     </div>

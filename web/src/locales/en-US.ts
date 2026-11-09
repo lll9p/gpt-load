@@ -1,5 +1,26 @@
 export default {
   outboundProxies: {
+    expand: "Expand",
+    collapse: "Collapse",
+    enableAfterAdd: "Enable after adding",
+    addCount: "Add {count} proxies",
+    previewSummary: "Preview: new {added} / duplicate skips {skipped} / invalid {invalid}",
+    batchStatus_existing: "Already exists / skip",
+    noMatch: "No matching proxies",
+
+    searchPlaceholder: "Search name, protocol or host:port",
+    batchHelp:
+      "Paste one full URL per line. {count} / 500 nonempty lines; names are generated as host:port.",
+    sensitiveInput: "This input shows raw credentials. Mind screen privacy.",
+    line: "Line",
+    batchStatus_new: "New",
+    batchStatus_duplicate: "Duplicate in batch / skip",
+    batchStatus_invalid: "Invalid",
+    discardDraft: "Discard unsubmitted URLs?",
+    batchResult: "Created {created}; skipped {skipped}.",
+    invalidLine: "Invalid URL on line {line}. Nothing was added.",
+    batchUnknown: "Submission outcome may be unknown. Refresh to verify before retrying.",
+
     title: "Outbound proxies",
     add: "Add proxy",
     refresh: "Refresh",
@@ -10,17 +31,75 @@ export default {
     enabled: "Enabled",
     disabled: "Disabled",
     required: "Required",
-    urlHelp:
-      "Use a full http/https/socks5/socks5h URL. URL-encode usernames and passwords. Click the eye to reveal credentials.",
     deleteConfirm:
-      "Delete proxy “{name}”? Affected keys may change proxy; an empty enabled pool causes requests to fail.",
+      "Delete proxy “{name}”? Some keys may be remapped; deleting and recreating it may also change mappings.",
     changeWarning:
       "Adding, deleting, disabling or restoring proxies can remap some keys. No automatic failover or direct fallback on network errors.",
     sticky: "Sticky outbound proxy",
     stickyHelp:
-      "When enabled, global enabled proxies take priority; saved fixed proxy_url and HTTP_PROXY do not apply. When disabled, fixed proxy_url / environment settings apply.",
+      "When enabled, routing uses the global enabled pool. Fixed proxy_url and environment proxies are retained but excluded from routing. Disabling restores the previous rules.",
     current: "Current proxy",
-    help: "HRW selects by KeyHash and stable proxy ID, without TTL or a binding table. The same key maps identically across enabled groups; multiple keys may share a proxy. Order and restarts do not change mapping. An empty enabled pool fails requests. A proxy URL does not guarantee a fixed exit IP.",
+    help: "HRW selects by KeyHash and proxy ID, without TTL or a binding table. The same key maps identically across enabled groups; multiple keys may share a proxy. Order and restarts do not change mappings; pool changes may. A fixed URL does not guarantee a fixed provider exit IP.",
+    summary: "Enabled {enabled} / Total {total}",
+    notLoaded: "Proxy pool not loaded",
+    stateUnknown: "Proxy pool status unknown",
+    mask: "Mask",
+    revealHint:
+      "Masked by default. Click to show original full URLs, including credentials; click again to mask. Be mindful of screen privacy.",
+    maskHint: "Click to mask full URLs and credentials again.",
+    revealedWarning:
+      "Original full URLs, including credentials, are visible. Beware of onlookers, screenshots and screen sharing.",
+    loading: "Loading proxy pool…",
+    staleWarning:
+      "Refresh failed; the displayed list may be stale. Refresh successfully before making changes.",
+    savedRefreshFailed:
+      "The change was submitted successfully, but refreshing the list failed. The list may be stale; refresh successfully before making further changes.",
+    deletedRefreshFailed:
+      "Deletion was submitted successfully, but refreshing the list failed. The list may be stale; refresh successfully before making further changes.",
+    emptyRisk: "No enabled proxies. Requests in sticky outbound groups will return 503.",
+    allDisabled: "All proxies are disabled. Requests in sticky outbound groups will return 503.",
+    id: "ID",
+    actions: "Actions",
+    toggleLabel: "Toggle proxy “{name}”",
+    addTitle: "Add outbound proxy",
+    editTitle: "Edit outbound proxy",
+    confirmTitle: "Confirm proxy change",
+    deleteTitle: "Confirm proxy deletion",
+    disableConfirm:
+      "Disabling this proxy may remap Keys or remove the last enabled proxy, causing sticky outbound requests to return 503. Other tabs may have changed its state. Continue?",
+    disableLastConfirm:
+      "Disabling the last enabled proxy makes business requests in groups with sticky outbound enabled return 503; Key validation is inconclusive and preserves the current state. Continue?",
+    deleteDisabledConfirm:
+      "Delete proxy “{name}” (disabled in this list)? Other tabs may have enabled it; deletion may remove the last enabled proxy and cause sticky outbound requests to return 503. Recreating it may change Key mappings.",
+    deleteEnabledConfirm:
+      "Delete proxy “{name}”? Other tabs may have changed the pool; deletion may remove the last enabled proxy and cause sticky outbound requests to return 503. Keys may be remapped, including after recreation.",
+    deleteLastConfirm:
+      "Delete the last enabled proxy “{name}”? Business requests in groups with sticky outbound enabled will return 503; Key validation is inconclusive and preserves the current state. Recreating the proxy may change mappings. Continue?",
+    invalidUrl: "Enter a full proxy URL with a valid basic format.",
+    nameHelp:
+      "A name is required and is only used for identification; renaming does not change Key-to-proxy mappings.",
+    urlChangeHelp:
+      "URL changes affect only new requests and do not actively interrupt in-flight SSE streams.",
+    enabledHelp:
+      "Enabled proxies join the candidate pool. Toggling may remap some Keys; enabled does not mean healthy.",
+    groupRefreshPool: "Refresh proxy pool",
+    groupStickyTooltip:
+      "Selects a global enabled proxy by key, ignoring fixed proxy_url and environment proxies.",
+    groupNoEnabledShort: "No enabled proxies; requests will return 503",
+    groupPoolErrorShort: "Could not load proxies",
+    groupStickyOnHelp:
+      "Enabled: routing uses the global enabled pool. Fixed proxy_url and environment proxies are retained but excluded from routing. Disabling restores the previous rules.",
+    groupStickyOffHelp: "Disabled: the existing fixed proxy_url / environment proxy rules apply.",
+    groupNoEnabled:
+      "No enabled proxies: business requests in groups with sticky outbound enabled return 503; Key validation is inconclusive and preserves the current state.",
+    groupPoolLoading: "Loading proxy pool…",
+    groupPoolUnknown:
+      "Could not read the proxy pool; its status is unknown. Click “Refresh proxy pool” to retry.",
+    groupPoolCount: "Enabled proxies: {count} (not a health indicator)",
+    mappingHelp:
+      "Deterministic mappings have no expiry. Keys may share a proxy; pool changes may alter mappings.",
+    mappingUnknown: "Proxy mapping unknown",
+    noEnabledProxies: "No enabled proxies",
   },
   auth: {
     noAuthKeyFound: "No authentication found, cannot export",
@@ -518,6 +597,7 @@ export default {
     latestVersion: "Latest Version",
     updateAvailable: "Update Available",
     checkFailed: "Check Failed",
+    noRelease: "No releases yet",
     docs: "Docs",
     officialDocs: "Official Documentation",
     viewSource: "View Source",

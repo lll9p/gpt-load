@@ -31,6 +31,8 @@ import { useI18n } from "vue-i18n";
 interface Props {
   show: boolean;
   group?: Group | null;
+  proxyPoolStatus: "loading" | "ready" | "error";
+  enabledProxyCount: number;
 }
 
 interface Emits {
@@ -112,6 +114,19 @@ const formData = reactive<GroupFormData>({
   configItems: [] as ConfigItem[],
   header_rules: [] as HeaderRuleItem[],
   proxy_keys: "",
+});
+
+const stickyProxyFeedback = computed(() => {
+  if (!formData.sticky_proxy_enabled) {
+    return undefined;
+  }
+  if (props.proxyPoolStatus === "error") {
+    return t("outboundProxies.groupPoolErrorShort");
+  }
+  if (props.proxyPoolStatus === "ready" && props.enabledProxyCount === 0) {
+    return t("outboundProxies.groupNoEnabledShort");
+  }
+  return undefined;
 });
 
 const keySelectionStrategyOptions = computed(() => [
@@ -626,7 +641,7 @@ async function handleSubmit() {
         :model="formData"
         :rules="rules"
         label-placement="left"
-        label-width="120px"
+        label-width="var(--form-label-width)"
         require-mark-placement="right-hanging"
         class="group-form"
       >
@@ -640,9 +655,18 @@ async function handleSubmit() {
               <template #label>
                 <div class="form-label-with-tooltip">
                   {{ t("keys.groupName") }}
-                  <n-tooltip trigger="hover" placement="top">
+                  <n-tooltip trigger="click" placement="top">
                     <template #trigger>
-                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        class="help-button"
+                        :aria-label="t('keys.groupNameTooltip')"
+                        @click.stop.prevent
+                      >
+                        <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      </n-button>
                     </template>
                     {{ t("keys.groupNameTooltip") }}
                   </n-tooltip>
@@ -655,9 +679,18 @@ async function handleSubmit() {
               <template #label>
                 <div class="form-label-with-tooltip">
                   {{ t("keys.displayName") }}
-                  <n-tooltip trigger="hover" placement="top">
+                  <n-tooltip trigger="click" placement="top">
                     <template #trigger>
-                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        class="help-button"
+                        :aria-label="t('keys.displayNameTooltip')"
+                        @click.stop.prevent
+                      >
+                        <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      </n-button>
                     </template>
                     {{ t("keys.displayNameTooltip") }}
                   </n-tooltip>
@@ -673,9 +706,18 @@ async function handleSubmit() {
               <template #label>
                 <div class="form-label-with-tooltip">
                   {{ t("keys.channelType") }}
-                  <n-tooltip trigger="hover" placement="top">
+                  <n-tooltip trigger="click" placement="top">
                     <template #trigger>
-                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        class="help-button"
+                        :aria-label="t('keys.channelTypeTooltip')"
+                        @click.stop.prevent
+                      >
+                        <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      </n-button>
                     </template>
                     {{ t("keys.channelTypeTooltip") }}
                   </n-tooltip>
@@ -693,9 +735,18 @@ async function handleSubmit() {
               <template #label>
                 <div class="form-label-with-tooltip">
                   {{ t("keys.sortOrder") }}
-                  <n-tooltip trigger="hover" placement="top">
+                  <n-tooltip trigger="click" placement="top">
                     <template #trigger>
-                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        class="help-button"
+                        :aria-label="t('keys.sortOrderTooltip')"
+                        @click.stop.prevent
+                      >
+                        <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      </n-button>
                     </template>
                     {{ t("keys.sortOrderTooltip") }}
                   </n-tooltip>
@@ -714,9 +765,18 @@ async function handleSubmit() {
             <template #label>
               <div class="form-label-with-tooltip">
                 {{ t("keys.keySelectionStrategy") }}
-                <n-tooltip trigger="hover" placement="top">
+                <n-tooltip trigger="click" placement="top">
                   <template #trigger>
-                    <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    <n-button
+                      quaternary
+                      circle
+                      size="tiny"
+                      class="help-button"
+                      :aria-label="t('keys.keySelectionStrategyTooltip')"
+                      @click.stop.prevent
+                    >
+                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    </n-button>
                   </template>
                   {{ t("keys.keySelectionStrategyTooltip") }}
                 </n-tooltip>
@@ -739,9 +799,18 @@ async function handleSubmit() {
               <template #label>
                 <div class="form-label-with-tooltip">
                   {{ t("keys.testModel") }}
-                  <n-tooltip trigger="hover" placement="top">
+                  <n-tooltip trigger="click" placement="top">
                     <template #trigger>
-                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        class="help-button"
+                        :aria-label="t('keys.testModelTooltip')"
+                        @click.stop.prevent
+                      >
+                        <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      </n-button>
                     </template>
                     {{ t("keys.testModelTooltip") }}
                   </n-tooltip>
@@ -763,9 +832,24 @@ async function handleSubmit() {
               <template #label>
                 <div class="form-label-with-tooltip">
                   {{ t("keys.testPath") }}
-                  <n-tooltip trigger="hover" placement="top">
+                  <n-tooltip trigger="click" placement="top">
                     <template #trigger>
-                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        class="help-button"
+                        :aria-label="
+                          t(
+                            formData.channel_type === 'tavily'
+                              ? 'keys.tavilyTestPathTooltip'
+                              : 'keys.testPathTooltip1'
+                          )
+                        "
+                        @click.stop.prevent
+                      >
+                        <n-icon :component="HelpCircleOutline" class="help-icon" />
+                      </n-button>
                     </template>
                     <div>
                       <template v-if="formData.channel_type === 'tavily'">
@@ -800,19 +884,52 @@ async function handleSubmit() {
           </div>
 
           <!-- Proxy keys -->
-          <n-form-item :label="t('outboundProxies.sticky')" path="sticky_proxy_enabled">
-            <n-space vertical>
-              <n-switch v-model:value="formData.sticky_proxy_enabled" />
-              <span>{{ t("outboundProxies.stickyHelp") }}</span>
-            </n-space>
+          <n-form-item
+            :label="t('outboundProxies.sticky')"
+            path="sticky_proxy_enabled"
+            :validation-status="stickyProxyFeedback ? 'warning' : undefined"
+          >
+            <template #label>
+              <div class="form-label-with-tooltip">
+                {{ t("outboundProxies.sticky") }}
+                <n-tooltip trigger="click" placement="top">
+                  <template #trigger>
+                    <n-button
+                      quaternary
+                      circle
+                      size="tiny"
+                      class="help-button"
+                      :aria-label="t('outboundProxies.groupStickyTooltip')"
+                      @click.stop.prevent
+                    >
+                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    </n-button>
+                  </template>
+                  {{ t("outboundProxies.groupStickyTooltip") }}
+                </n-tooltip>
+              </div>
+            </template>
+            <n-switch v-model:value="formData.sticky_proxy_enabled" />
+            <template v-if="stickyProxyFeedback" #feedback>
+              {{ stickyProxyFeedback }}
+            </template>
           </n-form-item>
           <n-form-item :label="t('keys.proxyKeys')" path="proxy_keys">
             <template #label>
               <div class="form-label-with-tooltip">
                 {{ t("keys.proxyKeys") }}
-                <n-tooltip trigger="hover" placement="top">
+                <n-tooltip trigger="click" placement="top">
                   <template #trigger>
-                    <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    <n-button
+                      quaternary
+                      circle
+                      size="tiny"
+                      class="help-button"
+                      :aria-label="t('keys.proxyKeysTooltip')"
+                      @click.stop.prevent
+                    >
+                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    </n-button>
                   </template>
                   {{ t("keys.proxyKeysTooltip") }}
                 </n-tooltip>
@@ -830,9 +947,18 @@ async function handleSubmit() {
             <template #label>
               <div class="form-label-with-tooltip">
                 {{ t("common.description") }}
-                <n-tooltip trigger="hover" placement="top">
+                <n-tooltip trigger="click" placement="top">
                   <template #trigger>
-                    <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    <n-button
+                      quaternary
+                      circle
+                      size="tiny"
+                      class="help-button"
+                      :aria-label="t('keys.descriptionTooltip')"
+                      @click.stop.prevent
+                    >
+                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    </n-button>
                   </template>
                   {{ t("keys.descriptionTooltip") }}
                 </n-tooltip>
@@ -866,9 +992,18 @@ async function handleSubmit() {
             <template #label>
               <div class="form-label-with-tooltip">
                 {{ t("keys.upstream") }} {{ index + 1 }}
-                <n-tooltip trigger="hover" placement="top">
+                <n-tooltip trigger="click" placement="top">
                   <template #trigger>
-                    <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    <n-button
+                      quaternary
+                      circle
+                      size="tiny"
+                      class="help-button"
+                      :aria-label="t('keys.upstreamTooltip')"
+                      @click.stop.prevent
+                    >
+                      <n-icon :component="HelpCircleOutline" class="help-icon" />
+                    </n-button>
                   </template>
                   {{ t("keys.upstreamTooltip") }}
                 </n-tooltip>
@@ -931,9 +1066,18 @@ async function handleSubmit() {
               <div class="config-section">
                 <h5 class="config-title-with-tooltip">
                   {{ t("keys.groupConfig") }}
-                  <n-tooltip trigger="hover" placement="top">
+                  <n-tooltip trigger="click" placement="top">
                     <template #trigger>
-                      <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        class="help-button"
+                        :aria-label="t('keys.groupConfigTooltip')"
+                        @click.stop.prevent
+                      >
+                        <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                      </n-button>
                     </template>
                     {{ t("keys.groupConfigTooltip") }}
                   </n-tooltip>
@@ -955,9 +1099,18 @@ async function handleSubmit() {
                     <template #label>
                       <div class="form-label-with-tooltip">
                         {{ t("keys.config") }} {{ index + 1 }}
-                        <n-tooltip trigger="hover" placement="top">
+                        <n-tooltip trigger="click" placement="top">
                           <template #trigger>
-                            <n-icon :component="HelpCircleOutline" class="help-icon" />
+                            <n-button
+                              quaternary
+                              circle
+                              size="tiny"
+                              class="help-button"
+                              :aria-label="t('keys.configTooltip')"
+                              @click.stop.prevent
+                            >
+                              <n-icon :component="HelpCircleOutline" class="help-icon" />
+                            </n-button>
                           </template>
                           {{ t("keys.configTooltip") }}
                         </n-tooltip>
@@ -1025,7 +1178,7 @@ async function handleSubmit() {
                   </n-form-item>
                 </div>
 
-                <div style="margin-top: 12px; padding-left: 120px">
+                <div class="form-add-action">
                   <n-button
                     @click="addConfigItem"
                     dashed
@@ -1043,9 +1196,18 @@ async function handleSubmit() {
               <div class="config-section">
                 <h5 class="config-title-with-tooltip">
                   {{ t("keys.customHeaders") }}
-                  <n-tooltip trigger="hover" placement="top">
+                  <n-tooltip trigger="click" placement="top">
                     <template #trigger>
-                      <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                      <n-button
+                        quaternary
+                        circle
+                        size="tiny"
+                        class="help-button"
+                        :aria-label="t('keys.headerRulesTooltip1')"
+                        @click.stop.prevent
+                      >
+                        <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                      </n-button>
                     </template>
                     <div>
                       {{ t("keys.headerRulesTooltip1") }}
@@ -1075,9 +1237,18 @@ async function handleSubmit() {
                     <template #label>
                       <div class="form-label-with-tooltip">
                         {{ t("keys.header") }} {{ index + 1 }}
-                        <n-tooltip trigger="hover" placement="top">
+                        <n-tooltip trigger="click" placement="top">
                           <template #trigger>
-                            <n-icon :component="HelpCircleOutline" class="help-icon" />
+                            <n-button
+                              quaternary
+                              circle
+                              size="tiny"
+                              class="help-button"
+                              :aria-label="t('keys.headerTooltip')"
+                              @click.stop.prevent
+                            >
+                              <n-icon :component="HelpCircleOutline" class="help-icon" />
+                            </n-button>
                           </template>
                           {{ t("keys.headerTooltip") }}
                         </n-tooltip>
@@ -1150,7 +1321,7 @@ async function handleSubmit() {
                   </n-form-item>
                 </div>
 
-                <div style="margin-top: 12px; padding-left: 120px">
+                <div class="form-add-action">
                   <n-button @click="addHeaderRule" dashed style="width: 100%">
                     <template #icon>
                       <n-icon :component="Add" />
@@ -1166,9 +1337,18 @@ async function handleSubmit() {
                   <template #label>
                     <div class="form-label-with-tooltip">
                       {{ t("keys.modelRedirectPolicy") }}
-                      <n-tooltip trigger="hover" placement="top">
+                      <n-tooltip trigger="click" placement="top">
                         <template #trigger>
-                          <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                          <n-button
+                            quaternary
+                            circle
+                            size="tiny"
+                            class="help-button"
+                            :aria-label="t('keys.modelRedirectPolicyTooltip')"
+                            @click.stop.prevent
+                          >
+                            <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                          </n-button>
                         </template>
                         {{ t("keys.modelRedirectPolicyTooltip") }}
                       </n-tooltip>
@@ -1200,9 +1380,18 @@ async function handleSubmit() {
                   <template #label>
                     <div class="form-label-with-tooltip">
                       {{ t("keys.modelRedirectRules") }}
-                      <n-tooltip trigger="hover" placement="top">
+                      <n-tooltip trigger="click" placement="top">
                         <template #trigger>
-                          <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                          <n-button
+                            quaternary
+                            circle
+                            size="tiny"
+                            class="help-button"
+                            :aria-label="t('keys.modelRedirectRulesTooltip')"
+                            @click.stop.prevent
+                          >
+                            <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                          </n-button>
                         </template>
                         {{ t("keys.modelRedirectRulesTooltip") }}
                       </n-tooltip>
@@ -1227,9 +1416,18 @@ async function handleSubmit() {
                   <template #label>
                     <div class="form-label-with-tooltip">
                       {{ t("keys.paramOverrides") }}
-                      <n-tooltip trigger="hover" placement="top">
+                      <n-tooltip trigger="click" placement="top">
                         <template #trigger>
-                          <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                          <n-button
+                            quaternary
+                            circle
+                            size="tiny"
+                            class="help-button"
+                            :aria-label="t('keys.paramOverridesTooltip')"
+                            @click.stop.prevent
+                          >
+                            <n-icon :component="HelpCircleOutline" class="help-icon config-help" />
+                          </n-button>
                         </template>
                         {{ t("keys.paramOverridesTooltip") }}
                       </n-tooltip>
@@ -1262,7 +1460,20 @@ async function handleSubmit() {
 
 <style scoped>
 .group-form-modal {
-  width: 800px;
+  width: min(800px, calc(100vw - 32px));
+}
+
+.group-form-card {
+  --modal-gutter: 24px;
+  --form-label-width: 160px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+}
+
+.form-add-action {
+  margin-top: 12px;
+  padding-left: var(--form-label-width);
 }
 
 .form-section {
@@ -1280,9 +1491,13 @@ async function handleSubmit() {
 
 :deep(.n-form-item-label) {
   font-weight: 500;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  align-items: center;
 }
 
 :deep(.n-form-item-blank) {
+  min-width: 0;
   flex-grow: 1;
 }
 
@@ -1300,17 +1515,20 @@ async function handleSubmit() {
 
 :deep(.n-card-header) {
   border-bottom: 1px solid var(--border-color);
-  padding: 10px 20px;
+  flex-shrink: 0;
+  padding: 16px var(--modal-gutter);
 }
 
 :deep(.n-card__content) {
-  max-height: calc(100vh - 68px - 61px - 50px);
+  min-height: 0;
+  padding: 0 var(--modal-gutter);
   overflow-y: auto;
 }
 
 :deep(.n-card__footer) {
   border-top: 1px solid var(--border-color);
-  padding: 10px 15px;
+  flex-shrink: 0;
+  padding: 16px var(--modal-gutter);
 }
 
 :deep(.n-form-item-feedback-wrapper) {
@@ -1341,6 +1559,10 @@ async function handleSubmit() {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.help-button {
+  flex-shrink: 0;
 }
 
 .help-icon {
@@ -1446,10 +1668,6 @@ async function handleSubmit() {
   --n-title-padding: 16px 0;
 }
 
-:deep(.n-base-selection-label) {
-  height: 40px;
-}
-
 /* 表单行布局 */
 .form-row {
   display: flex;
@@ -1458,6 +1676,7 @@ async function handleSubmit() {
 }
 
 .form-item-half {
+  min-width: 0;
   flex: 1;
   width: 50%;
 }
@@ -1506,7 +1725,8 @@ async function handleSubmit() {
 }
 
 .config-select {
-  flex: 0 0 200px;
+  min-width: 0;
+  flex: 0 1 200px;
 }
 
 .config-value {
@@ -1521,7 +1741,8 @@ async function handleSubmit() {
 
 @media (max-width: 768px) {
   .group-form-card {
-    width: 100vw !important;
+    --modal-gutter: 16px;
+    --form-label-width: 112px;
   }
 
   .group-form {
@@ -1554,6 +1775,7 @@ async function handleSubmit() {
     align-items: flex-start;
   }
 
+  .config-select,
   .config-value {
     flex: 1;
   }
@@ -1577,7 +1799,8 @@ async function handleSubmit() {
 }
 
 .header-name {
-  flex: 0 0 200px;
+  min-width: 0;
+  flex: 0 1 200px;
   position: relative;
 }
 
