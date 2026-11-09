@@ -2,42 +2,18 @@
 
 English | [中文](README_CN.md) | [日本語](README_JP.md)
 
-[![Upstream Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
+[![Releases](https://img.shields.io/badge/releases-GitHub-blue)](https://github.com/lll9p/gpt-load-lite/releases)
 ![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-GPT-Load Lite is a single-instance edition of GPT-Load, an AI API transparent proxy built with Go. It retains intelligent key management, upstream load balancing, monitoring, dynamic configuration, authentication, and API key encryption.
+GPT-Load Lite is a single-instance AI API transparent proxy built with Go. It provides key management, upstream load balancing, monitoring, dynamic configuration, authentication, and API key encryption.
 
-For information about the original project, visit the [upstream website](https://www.gpt-load.com/v1). Its deployment instructions do not apply to Lite.
-
-<a href="https://trendshift.io/repositories/14880" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14880" alt="tbphp%2Fgpt-load | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://hellogithub.com/repository/tbphp/gpt-load" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=554dc4c46eb14092b9b0c56f1eb9021c&claim_uid=Qlh8vzrWJ0HCneG" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
-
-## Sponsors
-
-<table>
-<tbody>
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-gpt-load"><img src="./screenshot/apimart.png" alt="APIMart" width="150"></a></td>
-<td>Thanks to APIMart for sponsoring this project! APIMart is a low-cost API platform for AI image &amp; video generation — GPT-Image-2 from $0.006/image, 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, fetch results via polling or callback. Batch tens of thousands of images without timeouts, switch models without changing code. Pay-as-you-go with no monthly fee — <a href="https://go.apimart.ai/gh-gpt-load">sign up here</a> to get started.</td>
-</tr>
-<tr>
-<td width="180" align="center"><a href="https://openai.com/"><img src="./screenshot/sponsor-openai.svg" alt="OpenAI" width="56"></a></td>
-<td>Thanks to OpenAI for sponsoring this project.</td>
-</tr>
-<tr>
-<td width="180"><a href="https://linux.do"><img src="./screenshot/l.png" alt="LINUX DO" width="150"></a></td>
-<td>Thank you very much for the support from the LINUX DO community!</td>
-</tr>
-<tr>
-<td width="180"><a href="https://www.digitalocean.com/?refcode=3d52cff21342&utm_campaign=Referral_Invite&utm_medium=Referral_Program&utm_source=badge"><img src="https://web-platforms.sfo2.cdn.digitaloceanspaces.com/WWW/Badge%202.svg" alt="DigitalOcean Referral Badge" width="150"></a></td>
-<td>This project is supported by DigitalOcean.</td>
-</tr>
-</tbody>
-</table>
+Fork origin: GPT-Load Lite is derived from [tbphp/gpt-load](https://github.com/tbphp/gpt-load) under the MIT license. See [LICENSE](LICENSE) for the original copyright notice.
 
 ## Features
 
+- **Key Selection**: Group-level round-robin (`round_robin`) or fill-first (`fill_first`) selection; fill-first prefers the first available key rather than rotating on every request.
+- **Sticky Outbound Proxies**: HRW maps keys to stable proxy IDs; failures do not automatically switch proxies or fall back to direct connections.
 - **Transparent Proxy**: Complete preservation of native API formats, supporting OpenAI, Google Gemini, and Anthropic Claude among other formats
 - **Intelligent Key Management**: High-performance key pool with group-based management, automatic rotation, and failure recovery
 - **Load Balancing**: Weighted load balancing across multiple upstream endpoints to enhance service availability
@@ -51,11 +27,12 @@ For information about the original project, visit the [upstream website](https:/
 
 ## Supported AI Services
 
-GPT-Load serves as a transparent proxy service, completely preserving the native API formats of various AI service providers:
+GPT-Load Lite serves as a transparent proxy service, completely preserving the native API formats of various AI service providers:
 
 - **OpenAI Format**: Official OpenAI API, Azure OpenAI, and other OpenAI-compatible services
 - **Google Gemini Format**: Native APIs for Gemini Pro, Gemini Pro Vision, and other models
 - **Anthropic Claude Format**: Claude series models, supporting high-quality conversations and text generation
+- **Tavily REST** (`tavily`): POST `/search`, `/extract`, `/crawl`, `/map`, `/research`, and GET `/research/{request_id}`; use the configured proxy key as a Bearer token. Client API keys are replaced with a key from the pool.
 
 ## Quick Start
 
@@ -67,7 +44,9 @@ GPT-Load serves as a transparent proxy service, completely preserving the native
 
 **Single instance only:** GPT-Load Lite does not support multiple application instances sharing state, even with PostgreSQL. Pending batch logs and task status are held in memory and do not survive restarts. An abnormal exit may lose logs that have not yet been written to the database.
 
-Run the commands below from the root of your local GPT-Load Lite source checkout. Build from this source; upstream GPT-Load images and deployment files run the untrimmed version, not Lite.
+Run the commands below from the root of your local GPT-Load Lite source checkout. Build from this source.
+
+> **Upgrading from upstream v1.4.10 (SQLite / Docker Compose, without aggregate groups):** Stop the old service first and back up the entire data directory, original `.env`, and Compose configuration. Keep the same `DATABASE_DSN`, data volume, and `ENCRYPTION_KEY` (leave it empty if it was empty); do not change the encryption key during this upgrade. The existing database migrates automatically at startup; keys do not need to be imported again. To roll back, restore the pre-upgrade database—switching to the old image alone is not enough. This does not establish compatibility with other upstream versions.
 
 ### Method 1: Docker Quick Start
 
@@ -148,7 +127,7 @@ After deployment:
 
 ### Configuration Architecture Overview
 
-GPT-Load adopts a dual-layer configuration architecture:
+GPT-Load Lite adopts a dual-layer configuration architecture:
 
 #### 1. Static Configuration (Environment Variables)
 
@@ -213,7 +192,7 @@ GPT-Load adopts a dual-layer configuration architecture:
 
 **Proxy Configuration:**
 
-GPT-Load automatically reads proxy settings from environment variables to make requests to upstream AI providers.
+GPT-Load Lite automatically reads proxy settings from environment variables to make requests to upstream AI providers.
 
 | Setting     | Environment Variable | Default | Description                                                  |
 | ----------- | -------------------- | ------- | ------------------------------------------------------------ |
@@ -273,7 +252,7 @@ HRW uses KeyHash and stable proxy IDs: no TTL or binding table, the same key map
 
 ## Data Encryption Migration
 
-GPT-Load supports encrypted storage of API keys. You can enable, disable, or change the encryption key at any time.
+GPT-Load Lite supports encrypted storage of API keys. You can enable, disable, or change the encryption key at any time.
 
 <details>
 <summary>View Data Encryption Migration Details</summary>
@@ -369,16 +348,6 @@ openssl rand -base64 32 | tr -d "=+/" | cut -c1-32
 
 Access the management console at: <http://localhost:3001> (default address)
 
-### Interface Overview
-
-<img src="screenshot/dashboard.png" alt="Dashboard" width="600"/>
-
-<br/>
-
-<img src="screenshot/keys.png" alt="Key Management" width="600"/>
-
-<br/>
-
 The web management interface provides the following features:
 
 - **Dashboard**: Real-time statistics and system status overview
@@ -391,7 +360,7 @@ The web management interface provides the following features:
 <details>
 <summary>Proxy Interface Invocation</summary>
 
-GPT-Load routes requests to different AI services through group names. Usage is as follows:
+GPT-Load Lite routes requests to different AI services through group names. Usage is as follows:
 
 ### 1. Proxy Endpoint Format
 
@@ -412,7 +381,7 @@ Configure **Proxy Keys** in the web management interface, which supports system-
 
 ### 3. OpenAI Interface Example
 
-GPT-Load currently supports two OpenAI-compatible group types:
+GPT-Load Lite currently supports two OpenAI-compatible group types:
 
 - `openai` (OpenAI Chat Completions format)
 - `openai-response` (OpenAI Responses format)
@@ -582,27 +551,13 @@ response = client.messages.create(
 )
 ```
 
-> **Important Note**: As a transparent proxy service, GPT-Load completely preserves the native API formats and authentication methods of various AI services. You only need to replace the endpoint address and use the **Proxy Key** configured in the management interface for seamless migration.
+> **Important Note**: As a transparent proxy service, GPT-Load Lite completely preserves the native API formats and authentication methods of various AI services. You only need to replace the endpoint address and use the **Proxy Key** configured in the management interface for seamless migration.
 
 </details>
-
-## Related Projects
-
-- **[New API](https://github.com/QuantumNous/new-api)** - Excellent AI model aggregation management and distribution system
-
-## Contributing
-
-Thanks to all the developers who have contributed to GPT-Load!
-
-[![Contributors](https://contrib.rocks/image?repo=tbphp/gpt-load)](https://github.com/tbphp/gpt-load/graphs/contributors)
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
-## Star History
-
-[![Stargazers over time](https://starchart.cc/tbphp/gpt-load.svg?variant=adaptive)](https://starchart.cc/tbphp/gpt-load)
 
 ## Upgrade notes
 

@@ -149,7 +149,7 @@ export default {
     deselectAll: "取消选中",
   },
   login: {
-    title: "GPT Load",
+    title: "GPT-Load Lite",
     subtitle: "智能负载均衡管理平台",
     welcome: "欢迎回来",
     welcomeDesc: "请输入您的授权密钥以继续",
@@ -580,7 +580,6 @@ export default {
     reportIssue: "问题反馈",
     contributors: "贡献者",
     viewContributors: "查看贡献者",
-    joinGroup: "加入群组",
   },
   charts: {
     requestTrend24h: "24小时请求趋势",

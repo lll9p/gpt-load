@@ -161,7 +161,7 @@ export default {
     deselectAll: "Deselect All",
   },
   login: {
-    title: "GPT Load",
+    title: "GPT-Load Lite",
     subtitle: "Intelligent Load Balancing Platform",
     welcome: "Welcome Back",
     welcomeDesc: "Please enter your auth key to continue",
@@ -605,7 +605,6 @@ export default {
     reportIssue: "Report Issue",
     contributors: "Contributors",
     viewContributors: "View Contributors",
-    joinGroup: "Join Group",
   },
   charts: {
     requestTrend24h: "24h Request Trend",

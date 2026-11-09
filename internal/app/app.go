@@ -44,7 +44,7 @@ func (a *App) Start() error {
 	a.logService.Start()
 	a.cronChecker.Start()
 	go func() {
-		logrus.Infof("GPT-Load %s listening on %s", version.Version, a.httpServer.Addr)
+		logrus.Infof("GPT-Load Lite %s listening on %s", version.Version, a.httpServer.Addr)
 		if err := a.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			logrus.Fatalf("HTTP server failed: %v", err)
 		}

@@ -2,42 +2,18 @@
 
 [English](README.md) | [中文](README_CN.md) | 日本語
 
-[![Upstream Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
+[![Releases](https://img.shields.io/badge/releases-GitHub-blue)](https://github.com/lll9p/gpt-load-lite/releases)
 ![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-GPT-Load Liteは、Goで開発されたGPT-Loadの単一インスタンス向け軽量版です。AI APIの透過プロキシ、キー管理、アップストリームのロードバランシング、監視、動的設定、認証、APIキーの暗号化機能を維持しています。
+GPT-Load Liteは、Goで開発された単一インスタンス向けAI API透過プロキシです。キー管理、アップストリームのロードバランシング、監視、動的設定、認証、APIキーの暗号化機能を提供します。
 
-元のプロジェクトについては、[上流の公式サイト](https://www.gpt-load.com/v1)をご覧ください。そちらのデプロイ手順はLiteには適用されません。
-
-<a href="https://trendshift.io/repositories/14880" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14880" alt="tbphp%2Fgpt-load | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://hellogithub.com/repository/tbphp/gpt-load" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=554dc4c46eb14092b9b0c56f1eb9021c&claim_uid=Qlh8vzrWJ0HCneG" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
-
-## スポンサー
-
-<table>
-<tbody>
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-gpt-load"><img src="./screenshot/apimart.png" alt="APIMart" width="150"></a></td>
-<td>APIMartによる本プロジェクトへのスポンサー支援に感謝します！APIMartはAI画像・動画生成に特化した低価格APIプラットフォームで、GPT-Image-2は1枚$0.006から、1ドルで160枚以上の画像を生成できます。画像と動画の両方に対応する1つの非同期APIで、タスクを送信してIDを取得し、ポーリングまたはコールバックで結果を取得できます。数万枚規模の一括処理でもタイムアウトせず、モデルを切り替えてもコードを変更する必要はありません。従量課金制で月額料金は不要です。<a href="https://go.apimart.ai/gh-gpt-load">こちらの登録リンク</a>から登録して、すぐにご利用いただけます。</td>
-</tr>
-<tr>
-<td width="180" align="center"><a href="https://openai.com/"><img src="./screenshot/sponsor-openai.svg" alt="OpenAI" width="56"></a></td>
-<td>本プロジェクトへのスポンサー支援に感謝します（OpenAI）。</td>
-</tr>
-<tr>
-<td width="180"><a href="https://linux.do"><img src="./screenshot/l.png" alt="LINUX DO" width="150"></a></td>
-<td>LINUX DOコミュニティからのサポートに心より感謝いたします！</td>
-</tr>
-<tr>
-<td width="180"><a href="https://www.digitalocean.com/?refcode=3d52cff21342&utm_campaign=Referral_Invite&utm_medium=Referral_Program&utm_source=badge"><img src="https://web-platforms.sfo2.cdn.digitaloceanspaces.com/WWW/Badge%202.svg" alt="DigitalOcean Referral Badge" width="150"></a></td>
-<td>このプロジェクトはDigitalOceanの支援を受けています。</td>
-</tr>
-</tbody>
-</table>
+Fork元：GPT-Load Liteは、MITライセンスの [tbphp/gpt-load](https://github.com/tbphp/gpt-load) を基にしています。元の著作権表示は [LICENSE](LICENSE) を参照してください。
 
 ## 特徴
 
+- **キー選択**：グループごとにラウンドロビン（`round_robin`）またはfill-first（`fill_first`）を選択できます。fill-firstは毎回キーを切り替えず、最初の利用可能なキーを優先します。
+- **スティッキー送信プロキシ**：HRWでキーを安定したプロキシIDに割り当てます。障害時の自動切替や直接接続へのフォールバックはありません。
 - **トランスペアレントプロキシ**: ネイティブAPIフォーマットの完全な保持、OpenAI、Google Gemini、Anthropic Claudeなどのフォーマットをサポート
 - **インテリジェントキー管理**: グループベース管理、自動ローテーション、障害復旧を備えた高性能キープール
 - **ロードバランシング**: サービスの可用性を向上させる複数のアップストリームエンドポイント間の重み付けロードバランシング
@@ -51,11 +27,12 @@ GPT-Load Liteは、Goで開発されたGPT-Loadの単一インスタンス向け
 
 ## サポートされているAIサービス
 
-GPT-Loadは、さまざまなAIサービスプロバイダーのネイティブAPIフォーマットを完全に保持するトランスペアレントプロキシサービスとして機能します：
+GPT-Load Liteは、さまざまなAIサービスプロバイダーのネイティブAPIフォーマットを完全に保持するトランスペアレントプロキシサービスとして機能します：
 
 - **OpenAIフォーマット**: 公式OpenAI API、Azure OpenAI、その他のOpenAI互換サービス
 - **Google Geminiフォーマット**: Gemini Pro、Gemini Pro VisionなどのモデルのネイティブAPI
 - **Anthropic Claudeフォーマット**: Claudeシリーズモデル、高品質な会話とテキスト生成をサポート
+- **Tavily REST**（`tavily`）：POST `/search`、`/extract`、`/crawl`、`/map`、`/research` および GET `/research/{request_id}` に対応します。設定したプロキシキーをBearerトークンとして使用し、クライアントのAPIキーはプール内のキーに置き換えられます。
 
 ## クイックスタート
 
@@ -67,7 +44,9 @@ GPT-Loadは、さまざまなAIサービスプロバイダーのネイティブA
 
 **単一インスタンスのみ対応：** GPT-Load Liteは、PostgreSQLを使用する場合でも、複数のアプリケーションインスタンス間での状態共有に対応していません。一括書き込み待ちのログとタスク状態はメモリに保持され、再起動後には引き継がれません。異常終了すると、データベースに未保存のログが失われる可能性があります。
 
-以下のコマンドは、ローカルのGPT-Load Liteソースのルートディレクトリで実行してください。このソースからビルドする必要があります。上流のGPT-Loadイメージやデプロイ用ファイルでは、Liteではなく簡素化前のバージョンが実行されます。
+以下のコマンドは、ローカルのGPT-Load Liteソースのルートディレクトリで実行し、このソースからビルドしてください。
+
+> **上流 v1.4.10 からの更新（SQLite / Docker Compose、集約グループ未使用）：** 旧サービスを停止し、データディレクトリ全体、元の `.env`、Compose設定をバックアップしてください。同じ `DATABASE_DSN`、データボリューム、`ENCRYPTION_KEY` を引き継ぎ（元が空なら空のまま）、今回の更新と同時に暗号鍵を変更しないでください。既存データベースは起動時に自動移行され、キーの再インポートは不要です。ロールバックには更新前のデータベースの復元が必要で、旧イメージへの切替だけでは不十分です。他の上流バージョンとの互換性を保証する説明ではありません。
 
 ### 方法1: Dockerクイックスタート
 
@@ -148,7 +127,7 @@ make run
 
 ### 設定アーキテクチャの概要
 
-GPT-Loadは二層設定アーキテクチャを採用しています：
+GPT-Load Liteは二層設定アーキテクチャを採用しています：
 
 #### 1. 静的設定（環境変数）
 
@@ -213,7 +192,7 @@ GPT-Loadは二層設定アーキテクチャを採用しています：
 
 **プロキシ設定：**
 
-GPT-Loadは、アップストリームAIプロバイダーへのリクエストを行うために環境変数からプロキシ設定を自動的に読み取ります。
+GPT-Load Liteは、アップストリームAIプロバイダーへのリクエストを行うために環境変数からプロキシ設定を自動的に読み取ります。
 
 | 設定          | 環境変数      | デフォルト | 説明                                                           |
 | ------------- | ------------- | ---------- | -------------------------------------------------------------- |
@@ -273,7 +252,7 @@ HRW は KeyHash と安定したプロキシ ID を使用し、TTL やバイン�
 
 ## データ暗号化移行
 
-GPT-LoadはAPIキーの暗号化保存をサポートしています。いつでも暗号化を有効化、無効化、または暗号化キーを変更できます。
+GPT-Load LiteはAPIキーの暗号化保存をサポートしています。いつでも暗号化を有効化、無効化、または暗号化キーを変更できます。
 
 <details>
 <summary>データ暗号化移行の詳細を表示</summary>
@@ -369,16 +348,6 @@ openssl rand -base64 32 | tr -d "=+/" | cut -c1-32
 
 管理コンソールにアクセス：<http://localhost:3001>（デフォルトアドレス）
 
-### インターフェースの概要
-
-<img src="screenshot/dashboard.png" alt="ダッシュボード" width="600"/>
-
-<br/>
-
-<img src="screenshot/keys.png" alt="キー管理" width="600"/>
-
-<br/>
-
 Web管理インターフェースは以下の機能を提供します：
 
 - **ダッシュボード**: リアルタイム統計とシステムステータスの概要
@@ -391,7 +360,7 @@ Web管理インターフェースは以下の機能を提供します：
 <details>
 <summary>プロキシインターフェースの呼び出し</summary>
 
-GPT-Loadはグループ名を通じてリクエストを異なるAIサービスにルーティングします。使用方法は以下の通りです：
+GPT-Load Liteはグループ名を通じてリクエストを異なるAIサービスにルーティングします。使用方法は以下の通りです：
 
 ### 1. プロキシエンドポイントフォーマット
 
@@ -412,7 +381,7 @@ Web管理インターフェースで**プロキシキー**を設定します。�
 
 ### 3. OpenAIインターフェースの例
 
-GPT-Load は現在、2種類の OpenAI 互換グループタイプをサポートしています：
+GPT-Load Lite は現在、2種類の OpenAI 互換グループタイプをサポートしています：
 
 - `openai`（OpenAI Chat Completions 形式）
 - `openai-response`（OpenAI Responses 形式）
@@ -582,27 +551,13 @@ response = client.messages.create(
 )
 ```
 
-> **重要な注意**: トランスペアレントプロキシサービスとして、GPT-Loadはさまざまなアイサービスのネイティブ APIフォーマットと認証方法を完全に保持します。エンドポイントアドレスを置き換え、管理インターフェースで設定された**プロキシキー**を使用するだけで、シームレスな移行が可能です。
+> **重要な注意**: トランスペアレントプロキシサービスとして、GPT-Load Liteはさまざまなアイサービスのネイティブ APIフォーマットと認証方法を完全に保持します。エンドポイントアドレスを置き換え、管理インターフェースで設定された**プロキシキー**を使用するだけで、シームレスな移行が可能です。
 
 </details>
-
-## 関連プロジェクト
-
-- **[New API](https://github.com/QuantumNous/new-api)** - 優秀なAIモデル統合管理配信システム
-
-## 貢献
-
-GPT-Loadに貢献してくださったすべての開発者に感謝します！
-
-[![Contributors](https://contrib.rocks/image?repo=tbphp/gpt-load)](https://github.com/tbphp/gpt-load/graphs/contributors)
 
 ## ライセンス
 
 MITライセンス - 詳細は[LICENSE](LICENSE)ファイルを参照してください。
-
-## スター履歴
-
-[![Stargazers over time](https://starchart.cc/tbphp/gpt-load.svg?variant=adaptive)](https://starchart.cc/tbphp/gpt-load)
 
 ## アップグレード時の注意
 

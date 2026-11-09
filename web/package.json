@@ -1,21 +1,21 @@
 {
-  "name": "gpt-load-frontend",
+  "name": "gpt-load-lite-frontend",
   "private": true,
   "version": "0.1.0",
-  "description": "GPT Load Balancer Frontend - A modern Vue 3 frontend for GPT load balancing service",
+  "description": "Vue 3 frontend for GPT-Load Lite",
   "type": "module",
-  "keywords": ["vue3", "typescript", "vite", "naive-ui", "gpt-load", "frontend"],
-  "author": "tbphp",
+  "keywords": ["vue3", "typescript", "vite", "naive-ui", "gpt-load-lite", "frontend"],
+  "author": "lll9p",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tbphp/gpt-load.git",
+    "url": "https://github.com/lll9p/gpt-load-lite.git",
     "directory": "web"
   },
   "bugs": {
-    "url": "https://github.com/tbphp/gpt-load/issues"
+    "url": "https://github.com/lll9p/gpt-load-lite/issues"
   },
-  "homepage": "https://github.com/tbphp/gpt-load#readme",
+  "homepage": "https://github.com/lll9p/gpt-load-lite#readme",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",

@@ -163,7 +163,7 @@ export default {
     deselectAll: "選択を解除",
   },
   login: {
-    title: "GPT Load",
+    title: "GPT-Load Lite",
     subtitle: "インテリジェント負荷分散管理プラットフォーム",
     welcome: "おかえりなさい",
     welcomeDesc: "続行するには認証キーを入力してください",
@@ -608,7 +608,6 @@ export default {
     reportIssue: "問題を報告",
     contributors: "貢献者",
     viewContributors: "貢献者を見る",
-    joinGroup: "グループに参加",
   },
   charts: {
     requestTrend24h: "24時間リクエストトレンド",

@@ -1,4 +1,4 @@
-// Package main provides the entry point for the GPT-Load proxy server
+// Package main provides the entry point for the GPT-Load Lite proxy server
 package main
 
 import (
@@ -48,7 +48,7 @@ func runCommand() {
 
 // printHelp displays the general help information
 func printHelp() {
-	fmt.Println("GPT-Load - Multi-channel AI proxy with intelligent key rotation.")
+	fmt.Println("GPT-Load Lite - Multi-channel AI proxy with intelligent key rotation.")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  gpt-load                    Start the proxy server")

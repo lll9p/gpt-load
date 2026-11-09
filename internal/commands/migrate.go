@@ -27,7 +27,7 @@ func RunMigrateKeys(args []string) {
 
 	// Set custom usage message
 	migrateCmd.Usage = func() {
-		fmt.Println("GPT-Load Key Migration Tool")
+		fmt.Println("GPT-Load Lite Key Migration Tool")
 		fmt.Println("Migrates API keys and outbound proxy credentials together.")
 		fmt.Println()
 		fmt.Println("Usage:")

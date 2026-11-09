@@ -2,42 +2,18 @@
 
 [English](README.md) | 中文 | [日本語](README_JP.md)
 
-[![Upstream Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v1.*)](https://github.com/tbphp/gpt-load/releases)
+[![Releases](https://img.shields.io/badge/releases-GitHub-blue)](https://github.com/lll9p/gpt-load-lite/releases)
 ![Go Version](https://img.shields.io/badge/Go-1.25+-blue.svg)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-GPT-Load Lite 是 GPT-Load 的单实例精简版，使用 Go 开发，保留 AI 接口透明代理、智能密钥管理、上游负载均衡、监控、动态配置、认证和 API 密钥加密功能。
+GPT-Load Lite 是使用 Go 开发的单实例 AI 接口透明代理，提供密钥管理、上游负载均衡、监控、动态配置、认证和 API 密钥加密功能。
 
-原项目的信息请参阅[上游官方网站](https://www.gpt-load.com/v1)，其中的部署说明不适用于 Lite。
-
-<a href="https://trendshift.io/repositories/14880" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14880" alt="tbphp%2Fgpt-load | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://hellogithub.com/repository/tbphp/gpt-load" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=554dc4c46eb14092b9b0c56f1eb9021c&claim_uid=Qlh8vzrWJ0HCneG" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
-
-## 赞助商
-
-<table>
-<tbody>
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-gpt-load"><img src="./screenshot/apimart.png" alt="APIMart" width="150"></a></td>
-<td>感谢 APIMart 赞助了本项目！APIMart 是专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可出图 160+ 张。图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码。按量付费、无月费，通过<a href="https://go.apimart.ai/gh-gpt-load">此注册链接</a>注册即可开用。</td>
-</tr>
-<tr>
-<td width="180" align="center"><a href="https://openai.com/"><img src="./screenshot/sponsor-openai.svg" alt="OpenAI" width="56"></a></td>
-<td>感谢 OpenAI 对本项目的赞助支持。</td>
-</tr>
-<tr>
-<td width="180"><a href="https://linux.do"><img src="./screenshot/l.png" alt="LINUX DO" width="150"></a></td>
-<td>非常感谢 LINUX DO 社区的支持！</td>
-</tr>
-<tr>
-<td width="180"><a href="https://www.digitalocean.com/?refcode=3d52cff21342&utm_campaign=Referral_Invite&utm_medium=Referral_Program&utm_source=badge"><img src="https://web-platforms.sfo2.cdn.digitaloceanspaces.com/WWW/Badge%202.svg" alt="DigitalOcean Referral Badge" width="150"></a></td>
-<td>本项目由 DigitalOcean 支持。</td>
-</tr>
-</tbody>
-</table>
+Fork 来源：GPT-Load Lite 基于 [tbphp/gpt-load](https://github.com/tbphp/gpt-load)，采用 MIT 许可证；原版权声明见 [LICENSE](LICENSE)。
 
 ## 功能特性
 
+- **密钥选择**：分组可选轮询（`round_robin`）或优先填满（`fill_first`）；fill-first 优先使用首个可用密钥，而非每次请求都轮换。
+- **粘性出站代理**：HRW 将密钥映射到稳定代理 ID，故障时不会自动更换代理或回退直连。
 - **透明代理**: 完全保留原生 API 格式，支持 OpenAI、Google Gemini 和 Anthropic Claude 等多种格式
 - **智能密钥管理**: 高性能密钥池，支持分组管理、自动轮换和故障恢复
 - **负载均衡**: 支持多上游端点的加权负载均衡，提升服务可用性
@@ -51,11 +27,12 @@ GPT-Load Lite 是 GPT-Load 的单实例精简版，使用 Go 开发，保留 AI 
 
 ## 支持的 AI 服务
 
-GPT-Load 作为透明代理服务，完整保留各 AI 服务商的原生 API 格式：
+GPT-Load Lite 作为透明代理服务，完整保留各 AI 服务商的原生 API 格式：
 
 - **OpenAI 格式**: 官方 OpenAI API、Azure OpenAI、以及其他 OpenAI 兼容服务
 - **Google Gemini 格式**: Gemini Pro、Gemini Pro Vision 等模型的原生 API
 - **Anthropic Claude 格式**: Claude 系列模型，支持高质量的对话和文本生成
+- **Tavily REST**（`tavily`）：支持 POST `/search`、`/extract`、`/crawl`、`/map`、`/research` 和 GET `/research/{request_id}`；使用配置的代理密钥作为 Bearer token，客户端 API 密钥会替换为池中密钥。
 
 ## 快速开始
 
@@ -67,7 +44,9 @@ GPT-Load 作为透明代理服务，完整保留各 AI 服务商的原生 API �
 
 **仅支持单实例：** GPT-Load Lite 不支持多个应用实例共享状态，即使使用 PostgreSQL 也不支持。待批量写入的日志和任务状态保存在内存中，不跨重启保留；异常退出可能丢失尚未落库的日志。
 
-以下命令均在本地 GPT-Load Lite 源码根目录执行。请从当前源码构建；上游 GPT-Load 镜像和部署文件运行的是未精简版本，不是 Lite。
+以下命令均在本地 GPT-Load Lite 源码根目录执行，请从当前源码构建。
+
+> **从上游 v1.4.10 升级（SQLite / Docker Compose，未使用聚合分组）：** 先停止旧服务，备份整个数据目录、原 `.env` 和 Compose 配置。沿用同一 `DATABASE_DSN`、数据卷和 `ENCRYPTION_KEY`（原为空则仍留空），不要在本次升级中同时更换加密密钥。已有数据库会在启动时自动迁移，无需重新导入 Key。回退必须恢复升级前的数据库，不能只换回旧镜像。此说明不代表兼容其他上游版本。
 
 ### 方式一：Docker 快速开始
 
@@ -148,7 +127,7 @@ make run
 
 ### 配置架构概述
 
-GPT-Load 采用双层配置架构：
+GPT-Load Lite 采用双层配置架构：
 
 #### 1. 静态配置（环境变量）
 
@@ -213,7 +192,7 @@ GPT-Load 采用双层配置架构：
 
 **代理配置：**
 
-GPT-Load 会自动从环境变量中读取代理设置，用于向上游 AI 服务商发起请求。
+GPT-Load Lite 会自动从环境变量中读取代理设置，用于向上游 AI 服务商发起请求。
 
 | 配置项     | 环境变量      | 默认值 | 说明                                     |
 | ---------- | ------------- | ------ | ---------------------------------------- |
@@ -273,7 +252,7 @@ HRW 使用 KeyHash 和稳定代理 ID，无 TTL、无绑定表；跨开启组同
 
 ## 数据加密迁移
 
-GPT-Load 支持对 API 密钥进行加密存储。您可以随时启用、禁用或更换加密密钥。
+GPT-Load Lite 支持对 API 密钥进行加密存储。您可以随时启用、禁用或更换加密密钥。
 
 <details>
 <summary>查看数据加密迁移详细说明</summary>
@@ -369,16 +348,6 @@ openssl rand -base64 32 | tr -d "=+/" | cut -c1-32
 
 访问管理控制台：<http://localhost:3001>（默认地址）
 
-### 界面展示
-
-<img src="screenshot/dashboard.png" alt="仪表盘" width="600" />
-
-<br/>
-
-<img src="screenshot/keys.png" alt="密钥管理" width="600" />
-
-<br/>
-
 Web 管理界面提供以下功能：
 
 - **仪表盘**: 实时统计信息和系统状态概览
@@ -391,7 +360,7 @@ Web 管理界面提供以下功能：
 <details>
 <summary>代理接口调用方式</summary>
 
-GPT-Load 通过分组名称路由请求到不同的 AI 服务。使用方式如下：
+GPT-Load Lite 通过分组名称路由请求到不同的 AI 服务。使用方式如下：
 
 ### 1. 代理端点格式
 
@@ -412,7 +381,7 @@ http://localhost:3001/proxy/{group_name}/{原始API路径}
 
 ### 3. OpenAI 接口调用示例
 
-GPT-Load 当前支持两种 OpenAI 兼容分组类型：
+GPT-Load Lite 当前支持两种 OpenAI 兼容分组类型：
 
 - `openai`（OpenAI Chat Completions 格式）
 - `openai-response`（OpenAI Responses 格式）
@@ -582,27 +551,13 @@ response = client.messages.create(
 )
 ```
 
-> **重要提示**：作为透明代理服务，GPT-Load 完全保留各 AI 服务的原生 API 格式和认证方式，仅需要替换端点地址并使用在管理端配置的**代理密钥**即可无缝迁移。
+> **重要提示**：作为透明代理服务，GPT-Load Lite 完全保留各 AI 服务的原生 API 格式和认证方式，仅需要替换端点地址并使用在管理端配置的**代理密钥**即可无缝迁移。
 
 </details>
-
-## 相关项目
-
-- **[New API](https://github.com/QuantumNous/new-api)** - 优秀的AI模型聚合管理分发系统
-
-## 贡献
-
-感谢所有为 GPT-Load 做出贡献的开发者们！
-
-[![Contributors](https://contrib.rocks/image?repo=tbphp/gpt-load)](https://github.com/tbphp/gpt-load/graphs/contributors)
 
 ## 许可证
 
 MIT 许可证 - 详情请参阅 [LICENSE](LICENSE) 文件。
-
-## Star History
-
-[![Stargazers over time](https://starchart.cc/tbphp/gpt-load.svg?variant=adaptive)](https://starchart.cc/tbphp/gpt-load)
 
 ## 升级说明
 
